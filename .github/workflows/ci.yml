@@ -18,13 +18,24 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm install
+      - name: Install dependencies & Build
+        run: |
+          # 1. Chạy ở thư mục gốc nếu có package.json
+          if [ -f "package.json" ]; then
+            npm install
+            npm run build --if-present
+            npm test --if-present
+          fi
 
-      - name: Build Monorepo (NestJS & Next.js)
-        run: npm run build --if-present
-
-      - name: Run Tests (nếu có)
-        run: npm test --if-present
+          # 2. Tự động tìm và build trong các thư mục con phổ biến (apps, backend, frontend, ...)
+          for dir in apps/* packages/* backend frontend client server; do
+            if [ -d "$dir" ] && [ -f "$dir/package.json" ]; then
+              echo "===> Đang kiểm tra thư mục: $dir"
+              cd "$dir"
+              npm install
+              npm run build --if-present
+              npm test --if-present
+              cd - > /dev/null
+            fi
+          done
