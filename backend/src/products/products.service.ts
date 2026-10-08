@@ -39,6 +39,20 @@ export class ProductsService {
       imageUrl: '/images/peach-tea.jpg',
       stock: 100,
     },
+    {
+      id: '5',
+      name: 'Trà vải',
+      price: 39000,
+      imageUrl: '/images/lychee-tea.jpg',
+      stock: 100,
+    },
+    {
+      id: '6',
+      name: 'Bạc xỉu',
+      price: 35000,
+      imageUrl: '/images/bac-xiu.jpg',
+      stock: 100,
+    },
   ];
 
   findAll(): Product[] {
