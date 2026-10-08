@@ -1,0 +1,73 @@
+{
+	"info": {
+		"name": "BrewLite API - Task 2 & 7",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Products",
+			"item": [
+				{
+					"name": "Get All Products",
+					"request": {
+						"method": "GET",
+						"url": "http://localhost:3001/products"
+					}
+				},
+				{
+					"name": "Get Product By ID",
+					"request": {
+						"method": "GET",
+						"url": "http://localhost:3001/products/1"
+					}
+				},
+				{
+					"name": "Get Product By ID (Not Found)",
+					"request": {
+						"method": "GET",
+						"url": "http://localhost:3001/products/999"
+					}
+				}
+			]
+		},
+		{
+			"name": "Auth",
+			"item": [
+				{
+					"name": "Register",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@gmail.com\",\n    \"password\": \"123456\"\n}"
+						},
+						"url": "http://localhost:3001/auth/register"
+					}
+				},
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@gmail.com\",\n    \"password\": \"123456\"\n}"
+						},
+						"url": "http://localhost:3001/auth/login"
+					}
+				}
+			]
+		}
+	]
+}
