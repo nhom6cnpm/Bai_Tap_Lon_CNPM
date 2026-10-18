@@ -30,7 +30,6 @@ brewlite/
 ```bash
 git clone <URL_REPO>
 cd brewlite
-git checkout dev
 ```
 
 ### 2. Backend
@@ -52,12 +51,12 @@ npm run dev
 Kiểm tra: mở http://localhost:3000 → hiện `Backend nói: Hello BrewLite`.
 
 ## Quy ước làm việc (Git)
-- `main`: bản ổn định, **không push trực tiếp**.
-- `dev`: nhánh làm việc chung, merge qua Pull Request.
-- Mỗi task 1 nhánh riêng tách từ `dev`: `feature/task-<số>-<mô-tả-ngắn>`
+- `main`: bản chạy được, **không push trực tiếp**.
+- Mỗi task 1 nhánh riêng tách từ `main`: `feature/task-<số>-<mô-tả-ngắn>`
   (ví dụ `feature/task-2-api-products`).
+- Làm xong tạo Pull Request vào `main`.
 - Commit message theo dạng: `feat(products): add GET /products`, `fix(cart): ...`, `docs: ...`
-- Mọi PR cần **ít nhất 1 người review** trước khi merge vào `dev`.
+- Mọi PR cần **ít nhất 1 người review** trước khi merge vào `main`.
 
 ## Biến môi trường
 Xem `backend/.env.example` và `frontend/.env.example`. **Không commit file `.env`.**
