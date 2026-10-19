@@ -12,27 +12,8 @@ async function apiGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// Chuẩn hoá dữ liệu backend -> kiểu Product của FE
-function normalizeProduct(raw: Record<string, unknown>): Product {
-  return {
-    id: String(raw.id),
-    name: String(raw.name ?? ''),
-    price: Number(raw.price ?? 0),
-    imageUrl: (raw.imageUrl ?? raw.image ?? raw.image_url ?? null) as string | null,
-    description: raw.description ? String(raw.description) : undefined,
-  };
-}
-
 export async function fetchProducts(): Promise<Product[]> {
-  const raw = await apiGet<unknown>('/products');
-  const list = Array.isArray(raw)
-    ? raw
-    : ((raw as { data?: unknown[] })?.data ?? []);
-  return (list as Record<string, unknown>[]).map(normalizeProduct);
-}
-
-export async function fetchProduct(id: string): Promise<Product> {
-  const raw = await apiGet<Record<string, unknown>>(`/products/${id}`);
-  const item = (raw?.data ?? raw) as Record<string, unknown>;
-  return normalizeProduct(item);
+  const raw = await apiGet<Product[] | { data: Product[] }>('/products');
+  const list = Array.isArray(raw) ? raw : (raw?.data ?? []);
+  return list.map((p) => ({ ...p, id: String(p.id) }));
 }
