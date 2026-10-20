@@ -3,169 +3,190 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import styles from './productDetail.module.css';
+import ProductQueryProvider from '../../../components/ProductQueryProvider';
+import { formatPrice } from '../../../lib/formatPrice';
+import { calculateUnitPrice, sizeOptions, toppingOptions, type ProductSize, type ToppingId } from '../../../lib/productOptions';
+import { getProduct, ProductNotFoundError } from '../../../lib/products';
+import type { Product } from '../../../types/product';
 
-// Sample prices: agree on these with the team before connecting the API.
-const product = {
-  id: '1',
-  name: 'Cappuccino',
-  description: 'Cà phê espresso đậm đà, hòa cùng sữa tươi và lớp bọt sữa mềm mịn.',
-  price: 45000,
-  imageUrl: '/products/cappuccino.jpg',
-};
-const sizes = [
-  { id: 'S', label: 'Chuẩn', price: 0 },
-  { id: 'M', label: '+5.000đ', price: 5000 },
-  { id: 'L', label: '+10.000đ', price: 10000 },
-] as const;
-type Size = (typeof sizes)[number]['id'];
-const toppings = [
-  { id: 'cream', name: 'Kem béo', price: 5000 },
-  { id: 'pearls', name: 'Trân châu hoàng kim', price: 5000 },
-];
-type Selection = {
-  productId: string;
-  name: string;
-  size: Size;
-  toppingIds: string[];
-  quantity: number;
-  unitPrice: number;
-};
-const formatPrice = (value: number) => `${value.toLocaleString('vi-VN')}đ`;
-
-function CupIcon({ small = false }: { small?: boolean }) {
-  return (
-    <svg width={small ? 18 : 24} height={small ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-      <path d="M5 8h12v8a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8Z" />
-      <path d="M17 9h2a3 3 0 0 1 0 6h-2M8 2v3M12 2v3M16 2v3" />
-    </svg>
-  );
-}
+const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#173c32]';
 
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const [size, setSize] = useState<Size>('S');
-  const [selectedToppings, setSelectedToppings] = useState<string[]>([]);
-  const [quantity, setQuantity] = useState(1);
-  // Temporary local selections. Replace this handoff with the Task 5 cart store.
-  const [selections, setSelections] = useState<Selection[]>([]);
+  return (
+    <ProductQueryProvider>
+      <main className="min-h-[80vh] bg-[#f8f5ed] px-4 py-7 text-[#173c32] sm:px-6 sm:py-10">
+        <div className="mx-auto max-w-6xl">
+          <Link href="/" className={`mb-6 inline-flex items-center gap-2 text-sm font-semibold hover:underline ${focusRing}`}>
+            <span aria-hidden="true">←</span> Quay lại thực đơn
+          </Link>
+          <ProductDetails key={id} id={id} />
+        </div>
+      </main>
+    </ProductQueryProvider>
+  );
+}
+
+function ProductDetails({ id }: { id: string }) {
+  const { data: product, error, isPending, isFetching, refetch } = useQuery({
+    queryKey: ['products', id],
+    queryFn: ({ signal }) => getProduct(id, signal),
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  if (isPending) return <ProductSkeleton />;
+  if (!product) {
+    const isMissing = error instanceof ProductNotFoundError;
+    return (
+      <section className="rounded-3xl border border-[#dce1d8] bg-white px-6 py-16 text-center" aria-labelledby="product-error">
+        <p className="mb-3 text-sm font-semibold uppercase tracking-widest text-[#90663e]">BrewLite</p>
+        <h1 id="product-error" className="text-2xl font-bold">{isMissing ? 'Sản phẩm không tồn tại' : 'Không tải được thông tin món'}</h1>
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-[#64716a]">
+          {isMissing ? 'Món này không có trong thực đơn. Vui lòng chọn món khác.' : 'Vui lòng kiểm tra kết nối và thử lại.'}
+        </p>
+        {isMissing ? (
+          <Link href="/" className={`mt-6 inline-block rounded-xl bg-[#173c32] px-6 py-3 font-semibold text-white ${focusRing}`}>Về thực đơn</Link>
+        ) : (
+          <button type="button" onClick={() => void refetch()} disabled={isFetching}
+            className={`mt-6 rounded-xl bg-[#173c32] px-6 py-3 font-semibold text-white disabled:opacity-50 ${focusRing}`}>
+            {isFetching ? 'Đang thử lại…' : 'Thử lại'}
+          </button>
+        )}
+      </section>
+    );
+  }
+  return (
+    <>
+      {error && <p role="alert" className="mb-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Chưa cập nhật được thông tin món. Vui lòng thử lại trước khi chọn món.</p>}
+      <ProductOptions key={product.id} product={product} isRefreshing={isFetching} hasRefreshError={Boolean(error)} onRetry={() => void refetch()} />
+    </>
+  );
+}
+
+function ProductSkeleton() {
+  return (
+    <section aria-busy="true" aria-label="Đang tải thông tin món" className="overflow-hidden rounded-3xl border border-[#dce1d8] bg-white md:grid md:grid-cols-[42%_58%]">
+      <div aria-hidden="true" className="aspect-[4/3] animate-pulse bg-[#e6e5dc] motion-reduce:animate-none md:aspect-auto md:min-h-[600px]" />
+      <div aria-hidden="true" className="space-y-6 p-6 sm:p-9">
+        <div className="h-10 w-2/3 animate-pulse rounded-lg bg-[#eceee8] motion-reduce:animate-none" />
+        <div className="h-5 w-1/2 animate-pulse rounded bg-[#eceee8] motion-reduce:animate-none" />
+        <div className="h-24 animate-pulse rounded-2xl bg-[#eceee8] motion-reduce:animate-none" />
+        <div className="h-32 animate-pulse rounded-2xl bg-[#eceee8] motion-reduce:animate-none" />
+        <div className="h-14 animate-pulse rounded-xl bg-[#eceee8] motion-reduce:animate-none" />
+      </div>
+      <span className="sr-only">Đang tải thông tin món…</span>
+    </section>
+  );
+}
+
+function ProductOptions({ product, isRefreshing, hasRefreshError, onRetry }: {
+  product: Product;
+  isRefreshing: boolean;
+  hasRefreshError: boolean;
+  onRetry: () => void;
+}) {
+  const [size, setSize] = useState<ProductSize>('S');
+  const [toppingIds, setToppingIds] = useState<ToppingId[]>([]);
+  const [requestedQuantity, setRequestedQuantity] = useState(1);
+  const [imageFailed, setImageFailed] = useState(false);
   const [message, setMessage] = useState('');
-
-  const sizePrice = sizes.find((item) => item.id === size)?.price ?? 0;
-  const toppingPrice = toppings.filter((item) => selectedToppings.includes(item.id))
-    .reduce((total, item) => total + item.price, 0);
-  const unitPrice = product.price + sizePrice + toppingPrice;
+  const safeImageUrl = product.imageUrl?.startsWith('/images/') ? product.imageUrl : '/images/product-placeholder.svg';
+  const isInStock = product.stock > 0;
+  const quantity = Math.min(requestedQuantity, Math.max(1, product.stock));
+  const unitPrice = calculateUnitPrice(product.price, size, toppingIds);
   const totalPrice = unitPrice * quantity;
-  const cartCount = selections.reduce((total, item) => total + item.quantity, 0);
+  const isUnavailable = !isInStock || isRefreshing || hasRefreshError;
 
-  function toggleTopping(toppingId: string) {
-    setSelectedToppings((previous) => previous.includes(toppingId)
-      ? previous.filter((item) => item !== toppingId)
+  function toggleTopping(toppingId: ToppingId) {
+    setToppingIds((previous) => previous.includes(toppingId)
+      ? previous.filter((value) => value !== toppingId)
       : [...previous, toppingId]);
     setMessage('');
   }
 
-  function addSelection() {
-    const selection: Selection = {
-      productId: product.id, name: product.name, size,
-      toppingIds: [...selectedToppings], quantity, unitPrice,
-    };
-    setSelections((previous) => [...previous, selection]);
-    setMessage(`Đã thêm ${quantity} ly ${product.name} size ${size} · ${formatPrice(totalPrice)}.`);
+  function confirmSelection() {
+    if (isUnavailable) return;
+    const toppingNames = toppingOptions.filter((option) => toppingIds.includes(option.id)).map((option) => option.name).join(', ');
+    // Sprint 1 confirmation only. Replace with the Task 5 cart store in Sprint 2.
+    setMessage(`Đã xác nhận ${quantity} ly ${product.name}, size ${size}${toppingNames ? `, ${toppingNames}` : ', không topping'}. Thành tiền: ${formatPrice(totalPrice)}.`);
   }
 
   return (
-    <div className={styles.page} lang="vi">
-      <header className={styles.header}>
-        <div className={styles.headerInner}>
-          <Link className={styles.brand} href="/" aria-label="BrewLite — Trang chủ">
-            <span className={styles.logo}><CupIcon /></span>
-            <span><span className={styles.brandName}>Brew<span>Lite</span><small>SGU</small></span>
-              <span className={styles.brandDescription}>Đồ án Công nghệ phần mềm · Đại học Sài Gòn</span>
-            </span>
-          </Link>
-          <nav className={styles.nav} aria-label="Điều hướng">
-            <Link href="/">Trang chủ</Link>
-            <Link className={styles.activeNav} href="/products/1" aria-current="page">Chi tiết món</Link>
-            <span className={styles.cartLabel}>Giỏ hàng <span>{cartCount}</span></span>
-          </nav>
-          <span className={styles.pickup}><span />Nhận đồ uống tại quầy</span>
+    <section className="overflow-hidden rounded-3xl border border-[#dce1d8] bg-white shadow-[0_12px_40px_#173c3208] md:grid md:grid-cols-[42%_58%]" aria-labelledby="product-name">
+      <div className="relative aspect-[4/3] bg-[#e9e4d9] md:aspect-auto md:min-h-[650px]">
+        <Image src={imageFailed ? '/images/product-placeholder.svg' : safeImageUrl}
+          alt={imageFailed ? `Chưa có ảnh cho ${product.name}` : product.name}
+          fill loading="eager" sizes="(max-width: 767px) 100vw, 42vw" className="object-cover"
+          onError={() => setImageFailed(true)} />
+        <span className="absolute top-5 left-5 rounded-full bg-white/95 px-4 py-2 text-xs font-bold tracking-wide shadow-sm">BREWLITE · NHẬN TẠI QUẦY</span>
+        {imageFailed && <span className="absolute bottom-5 left-5 rounded-lg bg-white/95 px-3 py-2 text-sm">Ảnh món đang được cập nhật</span>}
+      </div>
+      <div className="p-5 sm:p-8 lg:p-10">
+        <div className="mb-7 flex flex-wrap items-start justify-between gap-4 border-b border-[#e9ece4] pb-6">
+          <div>
+            <p className="mb-2 text-xs font-bold tracking-[0.18em] text-[#90663e]">CHỌN MÓN THEO CÁCH CỦA BẠN</p>
+            <h1 id="product-name" className="text-3xl font-bold tracking-tight sm:text-4xl">{product.name}</h1>
+            <p className={`mt-3 text-sm ${isInStock ? 'text-[#64716a]' : 'font-semibold text-red-700'}`}>
+              {isInStock ? `Còn ${product.stock} ly · Pha chế sau khi đặt` : 'Món hiện đã hết hàng'}
+            </p>
+          </div>
+          <div className="sm:text-right"><p className="text-xs text-[#64716a]">Giá gốc</p><p className="mt-1 text-2xl font-bold">{formatPrice(product.price)}</p></div>
         </div>
-      </header>
 
-      <main className={styles.main}>
-        <Link href="/" className={styles.backLink}>← Quay lại trang chủ</Link>
-        {id !== product.id ? (
-          <section className={styles.missing}>
-            <h1>Chưa có thông tin món này</h1>
-            <p>Vui lòng chọn một món khác.</p>
-            <Link href="/products/1">Xem Cappuccino →</Link>
-          </section>
-        ) : (
-          <section className={styles.card} aria-labelledby="product-name">
-            <div className={styles.photo}>
-              <Image src={product.imageUrl} alt="Ly Cappuccino với lớp bọt sữa hình chiếc lá" fill preload sizes="(max-width: 760px) 100vw, 42vw" />
-              <span className={styles.photoBadge}>Món đặc trưng</span>
-            </div>
-            <div className={styles.content}>
-              <div className={styles.productHeading}>
-                <div><h1 id="product-name">{product.name}</h1><p>{product.description}</p></div>
-                <div className={styles.basePrice}><span>Giá gốc</span><strong>{formatPrice(product.price)}</strong></div>
-              </div>
+        <fieldset className="mb-7 disabled:opacity-60" disabled={!isInStock}>
+          <legend className="mb-3 font-bold">Chọn kích cỡ <span className="text-sm font-normal text-[#64716a]">(Size)</span></legend>
+          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+            {sizeOptions.map((option) => (
+              <label key={option.id} className={`relative flex cursor-pointer flex-col items-center gap-1 rounded-xl border px-2 py-4 text-center transition-colors focus-within:outline-2 focus-within:outline-offset-4 focus-within:outline-[#173c32] ${size === option.id ? 'border-[#173c32] bg-[#173c32] text-white' : 'border-[#dce1d8] bg-white hover:bg-[#f3f5ef]'}`}>
+                <input type="radio" name="size" value={option.id} checked={size === option.id} className="sr-only"
+                  onChange={() => { setSize(option.id); setMessage(''); }} />
+                <span className="text-lg font-bold">Size {option.id}</span>
+                <span className="text-xs sm:text-sm">{option.price === 0 ? 'Chuẩn (0đ)' : `+${formatPrice(option.price)}`}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
-              <fieldset className={styles.options}>
-                <legend>Chọn kích cỡ <span>(Size)</span></legend>
-                <div className={styles.sizeGrid}>
-                  {sizes.map((item) => (
-                    <label key={item.id} className={`${styles.sizeOption} ${size === item.id ? styles.selectedSize : ''}`}>
-                      <input type="radio" name="size" value={item.id} checked={size === item.id}
-                        onChange={() => { setSize(item.id); setMessage(''); }} />
-                      <strong>Size {item.id}</strong><span>{item.label}{item.price === 0 ? ' (0đ)' : ''}</span>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
+        <fieldset className="mb-7 disabled:opacity-60" disabled={!isInStock}>
+          <legend className="mb-3 font-bold">Topping thêm <span className="text-sm font-normal text-[#64716a]">(+5.000đ / loại)</span></legend>
+          <div className="space-y-2">
+            {toppingOptions.map((option) => (
+              <label key={option.id} className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 ${toppingIds.includes(option.id) ? 'border-[#799486] bg-[#f3f6ef]' : 'border-[#dce1d8]'}`}>
+                <input type="checkbox" checked={toppingIds.includes(option.id)} onChange={() => toggleTopping(option.id)}
+                  className={`size-4 shrink-0 accent-[#173c32] ${focusRing}`} />
+                <span className="flex-1 text-sm sm:text-base">{option.name}</span><span className="text-sm font-semibold">+{formatPrice(option.price)}</span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
 
-              <fieldset className={styles.options}>
-                <legend>Topping thêm <span>(+5.000đ / loại)</span></legend>
-                <div className={styles.toppingList}>
-                  {toppings.map((item) => (
-                    <label key={item.id} className={`${styles.toppingOption} ${selectedToppings.includes(item.id) ? styles.selectedTopping : ''}`}>
-                      <input type="checkbox" checked={selectedToppings.includes(item.id)} onChange={() => toggleTopping(item.id)} />
-                      <span>{item.name}</span><strong>+{formatPrice(item.price)}</strong>
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
+        <div className="mb-6 flex items-center justify-between gap-3">
+          <span className="font-semibold">Số lượng ly</span>
+          <div className="flex items-center rounded-xl border border-[#dce1d8]">
+            <button type="button" aria-label="Giảm số lượng" disabled={!isInStock || quantity <= 1}
+              onClick={() => { setRequestedQuantity(quantity - 1); setMessage(''); }}
+              className={`size-11 rounded-l-xl text-xl hover:bg-[#f3f5ef] disabled:opacity-30 ${focusRing}`}>−</button>
+            <output aria-label="Số lượng" className="min-w-10 text-center font-bold">{quantity}</output>
+            <button type="button" aria-label="Tăng số lượng" disabled={!isInStock || quantity >= product.stock}
+              onClick={() => { setRequestedQuantity(quantity + 1); setMessage(''); }}
+              className={`size-11 rounded-r-xl text-xl hover:bg-[#f3f5ef] disabled:opacity-30 ${focusRing}`}>+</button>
+          </div>
+        </div>
 
-              <div className={styles.quantityRow}>
-                <span>Số lượng ly</span>
-                <div className={styles.stepper}>
-                  <button type="button" aria-label="Giảm số lượng" disabled={quantity === 1}
-                    onClick={() => { setQuantity((value) => Math.max(1, value - 1)); setMessage(''); }}>−</button>
-                  <output aria-label="Số lượng">{quantity}</output>
-                  <button type="button" aria-label="Tăng số lượng"
-                    onClick={() => { setQuantity((value) => value + 1); setMessage(''); }}>+</button>
-                </div>
-              </div>
-
-              <div className={styles.summary} aria-live="polite" aria-atomic="true">
-                <span>Đơn giá 1 ly: <strong>{formatPrice(unitPrice)}</strong></span>
-                <span>Thành tiền: <strong className={styles.total}>{formatPrice(totalPrice)}</strong></span>
-              </div>
-              <button className={styles.addButton} type="button" onClick={addSelection}>
-                <CupIcon small />Thêm vào giỏ hàng · {formatPrice(totalPrice)}
-              </button>
-              <div className={styles.feedback} role="status">{message}</div>
-            </div>
-          </section>
-        )}
-      </main>
-      <footer className={styles.footer}>
-        <span><strong>BrewLite © 2026</strong> · Đồ án Công nghệ phần mềm · Đại học Sài Gòn</span>
-        <span>Nhận đồ uống tại quầy</span>
-      </footer>
-    </div>
+        <div aria-live="polite" aria-atomic="true" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-[#f5f4ed] p-4 text-sm">
+          <span>Đơn giá 1 ly: <strong>{formatPrice(unitPrice)}</strong></span>
+          <span>Thành tiền: <strong className="ml-1 text-xl text-[#90663e]">{formatPrice(totalPrice)}</strong></span>
+        </div>
+        <button type="button" disabled={isUnavailable} onClick={confirmSelection}
+          className={`flex min-h-14 w-full items-center justify-center gap-2 rounded-xl bg-[#173c32] px-4 py-3 font-bold text-white transition-colors hover:bg-[#245244] disabled:cursor-not-allowed disabled:opacity-50 ${focusRing}`}>
+          {!isInStock ? 'Món đã hết hàng' : isRefreshing ? 'Đang cập nhật…' : `Thêm vào giỏ hàng · ${formatPrice(totalPrice)}`}
+        </button>
+        {hasRefreshError && <button type="button" onClick={onRetry} disabled={isRefreshing} className={`mt-3 text-sm font-semibold underline ${focusRing}`}>Thử tải lại thông tin món</button>}
+        <p role="status" className="mt-3 min-h-10 text-sm leading-6 text-[#365e48]">{message}</p>
+      </div>
+    </section>
   );
 }
