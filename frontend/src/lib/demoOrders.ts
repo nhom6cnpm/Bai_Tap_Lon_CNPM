@@ -1,0 +1,103 @@
+import type { Order } from "@/types/order";
+
+// Preview fixtures never replace authenticated API results.
+export const demoOrders: Order[] = [
+  {
+    id: "bl1042",
+    code: "BL1042",
+    status: "PREPARING",
+    total: 159000,
+    createdAt: "2026-10-22T02:42:00Z",
+    pickupCode: "A-42",
+    paymentMethod: "WALLET",
+    items: [
+      {
+        id: "item-1",
+        productId: "3",
+        name: "Cappuccino",
+        size: "M",
+        toppings: ["Kem béo"],
+        qty: 2,
+        lineTotal: 110000,
+      },
+      {
+        id: "item-2",
+        productId: "4",
+        name: "Trà đào",
+        size: "L",
+        toppings: [],
+        qty: 1,
+        lineTotal: 49000,
+      },
+    ],
+  },
+  {
+    id: "bl1028",
+    code: "BL1028",
+    status: "COMPLETED",
+    total: 35000,
+    createdAt: "2026-10-21T07:15:00Z",
+    pickupCode: "A-28",
+    paymentMethod: "CARD",
+    items: [
+      {
+        id: "item-3",
+        productId: "1",
+        name: "Cà phê sữa",
+        size: "S",
+        toppings: [],
+        qty: 1,
+        lineTotal: 35000,
+      },
+    ],
+  },
+  {
+    id: "bl1015",
+    code: "BL1015",
+    status: "COMPLETED",
+    total: 89000,
+    createdAt: "2026-10-20T01:30:00Z",
+    pickupCode: "A-15",
+    paymentMethod: "WALLET",
+    items: [
+      {
+        id: "item-4",
+        productId: "2",
+        name: "Americano",
+        size: "L",
+        toppings: [],
+        qty: 1,
+        lineTotal: 50000,
+      },
+      {
+        id: "item-5",
+        productId: "5",
+        name: "Trà vải",
+        size: "S",
+        toppings: [],
+        qty: 1,
+        lineTotal: 39000,
+      },
+    ],
+  },
+  {
+    id: "bl1010",
+    code: "BL1010",
+    status: "PAYMENT_FAILED",
+    total: 40000,
+    createdAt: "2026-10-19T03:00:00Z",
+    pickupCode: null,
+    paymentMethod: "WALLET",
+    items: [
+      {
+        id: "item-6",
+        productId: "2",
+        name: "Americano",
+        size: "S",
+        toppings: [],
+        qty: 1,
+        lineTotal: 40000,
+      },
+    ],
+  },
+];

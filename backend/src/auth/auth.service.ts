@@ -1,71 +1,53 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
+import { UserEntity } from '../database/entities';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 
-interface User {
-  id: string;
-  email: string;
-  password?: string;
-}
-
 @Injectable()
 export class AuthService {
-  // Mock user database
-  private users: User[] = [];
+  constructor(
+    private readonly jwtService: JwtService,
+    @InjectRepository(UserEntity)
+    private readonly users: Repository<UserEntity>,
+  ) {}
 
-  constructor(private jwtService: JwtService) { }
-
-  async register(registerDto: RegisterDto) {
-    const { email, password } = registerDto;
-
-    if (!email || !password) {
-      throw new UnauthorizedException('Email and password are required');
+  async register({ email, password }: RegisterDto) {
+    const user = this.users.create({
+      email: email.trim().toLowerCase(),
+      passwordHash: await bcrypt.hash(password, 10),
+    });
+    try {
+      const saved = await this.users.save(user);
+      return { id: saved.id, email: saved.email };
+    } catch (error) {
+      if (
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string }).code === '23505'
+      ) {
+        throw new ConflictException('Email đã được đăng ký');
+      }
+      throw error;
     }
-
-    // Check if user exists
-    const existingUser = this.users.find((u) => u.email === email);
-    if (existingUser) {
-      throw new UnauthorizedException('User already exists');
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create new user (using mock data, replace with DB later)
-    const newUser = {
-      id: Date.now().toString(),
-      email,
-      password: hashedPassword,
-    };
-
-    this.users.push(newUser);
-
-    // Don't return password
-    const { password: _, ...result } = newUser;
-    return result;
   }
 
-  async login(loginDto: LoginDto) {
-    const { email, password } = loginDto;
-
-    // Find user
-    const user = this.users.find((u) => u.email === email);
-    if (!user || !user.password) {
-      throw new UnauthorizedException('Invalid credentials');
+  async login({ email, password }: LoginDto) {
+    const user = await this.users.findOne({
+      where: { email: email.trim().toLowerCase() },
+      select: { id: true, email: true, passwordHash: true },
+    });
+    if (!user || !(await bcrypt.compare(password, user.passwordHash))) {
+      throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
     }
-
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      throw new UnauthorizedException('Invalid credentials');
-    }
-
-    // Generate JWT token
-    const payload = { email: user.email, sub: user.id };
     return {
-      access_token: this.jwtService.sign(payload),
+      access_token: this.jwtService.sign({ email: user.email, sub: user.id }),
     };
   }
 }

@@ -9,3 +9,6 @@ dist/
 .vscode/
 
 *.tsbuildinfo
+test-results/
+playwright-report/
+coverage/
