@@ -48,7 +48,7 @@ cp .env.example .env.local
 npm install
 npm run dev
 ```
-Kiểm tra: mở http://localhost:3000 → hiện `Backend nói: Hello BrewLite`.
+Kiểm tra: mở http://localhost:3000 → current trang Menu.
 
 ## Quy ước làm việc (Git)
 - `main`: bản chạy được, **không push trực tiếp**.
