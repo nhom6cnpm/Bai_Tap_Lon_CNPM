@@ -5,7 +5,6 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import ProductQueryProvider from '../../../components/ProductQueryProvider';
 import { formatPrice } from '../../../lib/formatPrice';
 import { calculateUnitPrice, sizeOptions, toppingOptions, type ProductSize, type ToppingId } from '../../../lib/productOptions';
 import { getProduct, ProductNotFoundError } from '../../../lib/products';
@@ -16,16 +15,14 @@ const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-4 focus-
 export default function ProductDetailPage() {
   const { id } = useParams<{ id: string }>();
   return (
-    <ProductQueryProvider>
-      <main className="min-h-[80vh] bg-[#f8f5ed] px-4 py-7 text-[#173c32] sm:px-6 sm:py-10">
-        <div className="mx-auto max-w-6xl">
-          <Link href="/" className={`mb-6 inline-flex items-center gap-2 text-sm font-semibold hover:underline ${focusRing}`}>
-            <span aria-hidden="true">←</span> Quay lại thực đơn
-          </Link>
-          <ProductDetails key={id} id={id} />
-        </div>
-      </main>
-    </ProductQueryProvider>
+    <main className="min-h-[80vh] bg-[#f8f5ed] px-4 py-7 text-[#173c32] sm:px-6 sm:py-10">
+      <div className="mx-auto max-w-6xl">
+        <Link href="/" className={`mb-6 inline-flex items-center gap-2 text-sm font-semibold hover:underline ${focusRing}`}>
+          <span aria-hidden="true">←</span> Quay lại thực đơn
+        </Link>
+        <ProductDetails key={id} id={id} />
+      </div>
+    </main>
   );
 }
 
