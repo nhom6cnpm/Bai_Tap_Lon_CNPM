@@ -1,7 +1,11 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useCart, selectTotalQty } from '@/store/useCart';
+import dynamic from 'next/dynamic';
 
+
+const CartBadge = dynamic(() => import('./CartBadge'), { ssr: false });
 const NAV = [
   { label: 'Menu', href: '/menu', match: ['/menu', '/products'] },
   { label: 'Giỏ hàng', href: '/cart', match: ['/cart'] },
@@ -9,7 +13,7 @@ const NAV = [
 
 export default function Header() {
   const pathname = usePathname();
-
+  
   return (
     <header className="sticky top-0 z-10 border-b border-stone-200 bg-white/90 backdrop-blur">
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-3">
@@ -28,6 +32,7 @@ export default function Header() {
                 }`}
               >
                 {n.label}
+                {n.href === '/cart' && <CartBadge />}
               </Link>
             );
           })}

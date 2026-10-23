@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { formatPrice } from '../../../lib/formatPrice';
 import { calculateUnitPrice, sizeOptions, toppingOptions, type ProductSize, type ToppingId } from '../../../lib/productOptions';
 import { getProduct, ProductNotFoundError } from '../../../lib/products';
+import { useCart } from '@/store/useCart';
 import type { Product } from '../../../types/product';
 
 const focusRing = 'focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#173c32]';
@@ -90,6 +91,10 @@ function ProductOptions({ product, isRefreshing, hasRefreshError, onRetry }: {
   const [requestedQuantity, setRequestedQuantity] = useState(1);
   const [imageFailed, setImageFailed] = useState(false);
   const [message, setMessage] = useState('');
+  
+  //Gọi hook giỏ hàng
+  const addItem = useCart((s) => s.addItem);
+
   const safeImageUrl = product.imageUrl?.startsWith('/images/') ? product.imageUrl : '/images/product-placeholder.svg';
   const isInStock = product.stock > 0;
   const quantity = Math.min(requestedQuantity, Math.max(1, product.stock));
@@ -106,9 +111,21 @@ function ProductOptions({ product, isRefreshing, hasRefreshError, onRetry }: {
 
   function confirmSelection() {
     if (isUnavailable) return;
+    //Thêm sản phẩm vào giỏ hàng thông qua Zustand store
+    addItem({
+      productId:product.id,
+      name: product.name,
+      imageUrl: safeImageUrl,
+      size,
+      toppingIds,
+      qty: quantity,
+      unitPrice,
+    });
+
+
     const toppingNames = toppingOptions.filter((option) => toppingIds.includes(option.id)).map((option) => option.name).join(', ');
     // Sprint 1 confirmation only. Replace with the Task 5 cart store in Sprint 2.
-    setMessage(`Đã xác nhận ${quantity} ly ${product.name}, size ${size}${toppingNames ? `, ${toppingNames}` : ', không topping'}. Thành tiền: ${formatPrice(totalPrice)}.`);
+    setMessage(`Đã xác nhận ${quantity} ly ${product.name}, size ${size}${toppingNames ? `, ${toppingNames}` : ', không topping'}. Thành tiền: ${formatPrice(totalPrice)} vào giỏ hàng!`);
   }
 
   return (
