@@ -2,11 +2,12 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 // Dạng dòng giỏ dùng chung với Task 6
+export type ProductSize = 'S' | 'M' | 'L';
 export interface CartItem {
   productId: string;
   name: string;
   imageUrl: string;
-  size: string;
+  size: ProductSize;
   toppingIds: string[];
   qty: number;
   unitPrice: number; // đã gồm size + topping, tính bằng calculateUnitPrice

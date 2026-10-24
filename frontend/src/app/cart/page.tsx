@@ -3,13 +3,10 @@ import Link from 'next/link';
 import { useCart, getLineKey, selectTotalPrice } from '@/store/useCart';
 import { useHydrated } from '@/hooks/useHydrated';
 import { formatPrice } from '@/lib/formatPrice';
+import { toppingOptions } from '@/lib/productOptions';
 
-const TOPPING_NAMES: Record<string, string> = {
-  kem: 'Kem',
-  'tran-chau': 'Trân châu',
-};
 const toppingLabel = (ids: string[]) =>
-  ids.length ? ids.map((id) => TOPPING_NAMES[id] ?? id).join(', ') : 'Không topping';
+  ids.length ? ids.map((id) => toppingOptions.find((opt) => opt.id === id)?.name ?? id).join(', ') : 'Không topping';
 
 export default function CartPage() {
   const hydrated = useHydrated();

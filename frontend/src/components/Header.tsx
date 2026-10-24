@@ -1,7 +1,6 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCart, selectTotalQty } from '@/store/useCart';
 import dynamic from 'next/dynamic';
 
 

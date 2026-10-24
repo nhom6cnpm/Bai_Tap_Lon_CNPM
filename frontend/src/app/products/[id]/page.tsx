@@ -124,8 +124,8 @@ function ProductOptions({ product, isRefreshing, hasRefreshError, onRetry }: {
 
 
     const toppingNames = toppingOptions.filter((option) => toppingIds.includes(option.id)).map((option) => option.name).join(', ');
-    // Sprint 1 confirmation only. Replace with the Task 5 cart store in Sprint 2.
-    setMessage(`Đã xác nhận ${quantity} ly ${product.name}, size ${size}${toppingNames ? `, ${toppingNames}` : ', không topping'}. Thành tiền: ${formatPrice(totalPrice)} vào giỏ hàng!`);
+
+    setMessage(`Đã thêm ${quantity} ly ${product.name}, size ${size}${toppingNames ? `, ${toppingNames}` : ', không topping'} vào giỏ hàng. ${formatPrice(totalPrice)}`);
   }
 
   return (
