@@ -9,5 +9,3 @@ dist/
 .vscode/
 
 *.tsbuildinfo
-AGENTS.md
-CLAUDE.md
