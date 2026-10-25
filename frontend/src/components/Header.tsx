@@ -3,6 +3,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 
+const CartBadge = dynamic(() => import('./CartBadge'), { ssr: false });
 const AuthNav = dynamic(() => import('./AuthNav'), { ssr: false });
 
 const NAV = [
@@ -32,6 +33,7 @@ export default function Header() {
                   }`}
                 >
                   {n.label}
+                  {n.href === '/cart' && <CartBadge />}
                 </Link>
               );
             })}
@@ -42,4 +44,4 @@ export default function Header() {
       </div>
     </header>
   );
-}
+}
