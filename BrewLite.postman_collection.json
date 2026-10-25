@@ -66,8 +66,22 @@
 						},
 						"url": "http://localhost:3001/auth/login"
 					}
+				},
+				{
+					"name": "Get Profile",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/auth/me"
+					}
 				}
 			]
 		}
 	]
 }
+
