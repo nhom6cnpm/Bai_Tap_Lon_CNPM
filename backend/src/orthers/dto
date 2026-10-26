@@ -1,0 +1,33 @@
+import { IsArray, IsEnum, IsNotEmpty, IsNumber, IsString, Min, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export enum SizeEnum {
+  S = 'S',
+  M = 'M',
+  L = 'L',
+}
+
+export class OrderItemDto {
+  @IsNotEmpty({ message: 'productId không được để trống' })
+  @IsString()
+  productId: string;
+
+  @IsEnum(SizeEnum, { message: 'Size phải thuộc S, M, hoặc L' })
+  size: SizeEnum;
+
+  @IsArray()
+  @IsString({ each: true })
+  toppingIds: string[];
+
+  @IsNumber()
+  @Min(1, { message: 'Số lượng (qty) phải lớn hơn hoặc bằng 1' })
+  qty: number;
+}
+
+export class CreateOrderDto {
+  @IsArray()
+  @IsNotEmpty({ message: 'Danh sách items không được để trống' })
+  @ValidateNested({ each: true })
+  @Type(() => OrderItemDto)
+  items: OrderItemDto[];
+}
