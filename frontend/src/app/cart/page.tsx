@@ -75,6 +75,7 @@ export default function CartPage() {
                   key={key}
                   className="flex gap-3 rounded-2xl border border-stone-200 bg-white p-3 sm:p-4"
                 >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={item.imageUrl}
                     alt={item.name}
