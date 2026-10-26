@@ -12,7 +12,9 @@ export class OrdersService {
 
     for (const item of items) {
       const basePrice = 50000;
-      const sizeSurcharge = item.size === 'L' ? 15000 : item.size === 'M' ? 10000 : 0;
+      
+      const sizeSurcharge = item.size === 'L' ? 10000 : item.size === 'M' ? 5000 : 0;
+      
       const toppingsPrice = item.toppingIds.length * 5000;
 
       const unitPrice = basePrice + sizeSurcharge + toppingsPrice;
