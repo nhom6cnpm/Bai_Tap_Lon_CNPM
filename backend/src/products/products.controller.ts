@@ -6,13 +6,13 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
-  getAllProducts() {
+  async getAllProducts() {
     return this.productsService.findAll();
   }
 
   @Get(':id')
-  getProductById(@Param('id') id: string) {
-    const product = this.productsService.findById(id);
+  async getProductById(@Param('id') id: string) {
+    const product = await this.productsService.findById(id);
     if (!product) {
       throw new NotFoundException('Product not found');
     }

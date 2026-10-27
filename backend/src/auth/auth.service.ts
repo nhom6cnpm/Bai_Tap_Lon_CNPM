@@ -4,33 +4,40 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { User } from './user.entity';
 
-export interface User {
+export interface UserProfileResponse {
   id: string;
   email: string;
-  password?: string;
   loyaltyPoints: number;
 }
 
 @Injectable()
 export class AuthService {
-  // Mock user database (temporary in-memory for Sprint 2)
-  private users: User[] = [];
+  constructor(
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
+    private readonly jwtService: JwtService,
+  ) {}
 
-  constructor(private jwtService: JwtService) {}
-
-  async register(registerDto: RegisterDto) {
+  async register(registerDto: RegisterDto): Promise<UserProfileResponse> {
     const { email, password } = registerDto;
 
     if (!email || !password) {
       throw new UnauthorizedException('Email and password are required');
     }
 
+    const normalizedEmail = email.toLowerCase().trim();
+
     // Check if user exists -> return 409 ConflictException
-    const existingUser = this.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
+    const existingUser = await this.userRepository.findOneBy({
+      email: normalizedEmail,
+    });
     if (existingUser) {
       throw new ConflictException('Email đã được đăng ký trong hệ thống');
     }
@@ -38,32 +45,37 @@ export class AuthService {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user (using mock data, replace with DB later in Sprint 3)
-    const newUser: User = {
-      id: Date.now().toString(),
-      email: email.toLowerCase(),
-      password: hashedPassword,
+    // Create new user in PostgreSQL
+    const newUser = this.userRepository.create({
+      email: normalizedEmail,
+      passwordHash: hashedPassword,
       loyaltyPoints: 0,
+    });
+
+    const savedUser = await this.userRepository.save(newUser);
+
+    return {
+      id: savedUser.id,
+      email: savedUser.email,
+      loyaltyPoints: savedUser.loyaltyPoints ?? 0,
     };
-
-    this.users.push(newUser);
-
-    // Don't return password
-    const { password: _, ...result } = newUser;
-    return result;
   }
 
   async login(loginDto: LoginDto) {
     const { email, password } = loginDto;
 
+    const normalizedEmail = email.toLowerCase().trim();
+
     // Find user
-    const user = this.users.find((u) => u.email.toLowerCase() === email.toLowerCase());
-    if (!user || !user.password) {
+    const user = await this.userRepository.findOneBy({
+      email: normalizedEmail,
+    });
+    if (!user || !user.passwordHash) {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
     }
 
     // Verify password
-    const isPasswordValid = await bcrypt.compare(password, user.password);
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Email hoặc mật khẩu không chính xác');
     }
@@ -80,13 +92,15 @@ export class AuthService {
     };
   }
 
-  async getProfile(userId: string) {
-    const user = this.users.find((u) => u.id === userId);
+  async getProfile(userId: string): Promise<UserProfileResponse> {
+    const user = await this.userRepository.findOneBy({ id: userId });
     if (!user) {
       throw new UnauthorizedException('Người dùng không tồn tại');
     }
-    const { password: _, ...result } = user;
-    return result;
+    return {
+      id: user.id,
+      email: user.email,
+      loyaltyPoints: user.loyaltyPoints ?? 0,
+    };
   }
 }
-
