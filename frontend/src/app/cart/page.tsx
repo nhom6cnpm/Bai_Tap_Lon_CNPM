@@ -1,19 +1,16 @@
 'use client';
-
-import Link from 'next/link';
 import { useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCart, getLineKey, selectTotalPrice } from '@/store/useCart';
 import { useHydrated } from '@/hooks/useHydrated';
 import { formatPrice } from '@/lib/formatPrice';
-import { submitOrderApi } from '@/lib/order';
-
-const TOPPING_NAMES: Record<string, string> = {
-  kem: 'Kem',
-  'tran-chau': 'Trân châu',
-};
+import { toppingOptions } from '@/lib/productOptions';
+import { getStoredToken } from '@/lib/auth';
+import { submitOrderApi } from '@/lib/orders/orders';
 
 const toppingLabel = (ids: string[]) =>
-  ids.length ? ids.map((id) => TOPPING_NAMES[id] ?? id).join(', ') : 'Không topping';
+  ids.length ? ids.map((id) => toppingOptions.find((opt) => opt.id === id)?.name ?? id).join(', ') : 'Không topping';
 
 export default function CartPage() {
   const hydrated = useHydrated();
@@ -21,6 +18,7 @@ export default function CartPage() {
   const total = useCart(selectTotalPrice);
   const setQty = useCart((s) => s.setQty);
   const removeItem = useCart((s) => s.removeItem);
+  const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -29,18 +27,23 @@ export default function CartPage() {
   const handleCheckout = async () => {
     setErrorMessage(null);
     setSuccessMessage(null);
-    setLoading(true);
 
+    // Not logged in yet: go to login, then come back to the cart
+    if (!getStoredToken()) {
+      router.push('/login?redirect=/cart');
+      return;
+    }
+
+    setLoading(true);
     try {
       const data = await submitOrderApi(items);
-      setSuccessMessage(`Đặt hàng thành công! Mã đơn hàng của bạn: ${data.orderId || data.id}`);
       useCart.getState().clear();
+      setSuccessMessage(
+        `Đặt hàng thành công! Mã đơn: ${data.orderId} · Tổng tiền: ${formatPrice(data.total)}`,
+      );
     } catch (err: unknown) {
-      if (err instanceof Error) {
-        setErrorMessage(err.message);
-      } else {
-        setErrorMessage('Đã có lỗi xảy ra khi kết nối tới máy chủ.');
-      }
+      // Keep the cart unchanged so the user can try again
+      setErrorMessage(err instanceof Error ? err.message : 'Đã có lỗi xảy ra khi kết nối tới máy chủ.');
     } finally {
       setLoading(false);
     }
@@ -51,6 +54,15 @@ export default function CartPage() {
       <h1 className="mb-4 text-2xl font-bold">Giỏ hàng</h1>
 
       {!hydrated && <p className="text-stone-500">Đang tải giỏ hàng…</p>}
+
+      {successMessage && (
+        <div
+          role="status"
+          className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700"
+        >
+          {successMessage}
+        </div>
+      )}
 
       {hydrated && items.length === 0 && (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-10 text-center">
@@ -134,14 +146,11 @@ export default function CartPage() {
             </div>
 
             {errorMessage && (
-              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              >
                 {errorMessage}
-              </div>
-            )}
-
-            {successMessage && (
-              <div className="mt-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700 font-semibold">
-                {successMessage}
               </div>
             )}
 
@@ -157,7 +166,7 @@ export default function CartPage() {
                 disabled={loading}
                 className="flex-1 rounded-full bg-amber-700 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
               >
-                {loading ? 'Đang xử lý...' : 'Đặt hàng'}
+                {loading ? 'Đang xử lý…' : 'Đặt hàng'}
               </button>
             </div>
           </div>

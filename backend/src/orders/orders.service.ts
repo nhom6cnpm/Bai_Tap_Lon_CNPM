@@ -1,54 +1,94 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { CreateOrderDto } from './dto/create-order.dto';
+import { ProductsService } from '../products/products.service';
+import {
+  calculateUnitPrice,
+  type ProductSize,
+  type ToppingId,
+} from './pricing';
+
+export type OrderStatus = 'PENDING';
+
+export interface OrderItem {
+  id: string;
+  orderId: string;
+  productId: string;
+  size: ProductSize;
+  toppingIds: ToppingId[];
+  qty: number;
+  unitPrice: number;
+  lineTotal: number;
+}
+
+export interface Order {
+  id: string;
+  userId: string;
+  status: OrderStatus;
+  total: number;
+  items: OrderItem[];
+  createdAt: Date;
+}
 
 @Injectable()
 export class OrdersService {
-  private orders = [];
+  // Temporary in-memory storage for Sprint 2 (moves to PostgreSQL in Sprint 3)
+  private orders: Order[] = [];
+
+  constructor(private readonly productsService: ProductsService) {}
 
   async createOrder(userId: string, createOrderDto: CreateOrderDto) {
-    const { items } = createOrderDto;
-    let totalOrderAmount = 0;
-    const processedItems = [];
+    const orderId = 'ORD-' + Date.now();
+    let total = 0;
 
-    for (const item of items) {
-      const basePrice = 50000;
-      
-      const sizeSurcharge = item.size === 'L' ? 10000 : item.size === 'M' ? 5000 : 0;
-      
-      const toppingsPrice = item.toppingIds.length * 5000;
+    const items: OrderItem[] = createOrderDto.items.map((item, index) => {
+      const product = this.productsService.findById(item.productId);
+      if (!product) {
+        throw new BadRequestException(
+          `Sản phẩm ${item.productId} không tồn tại`,
+        );
+      }
 
-      const unitPrice = basePrice + sizeSurcharge + toppingsPrice;
+      // Backend recalculates the price; the client price is never trusted
+      const unitPrice = calculateUnitPrice(
+        product.price,
+        item.size,
+        item.toppingIds,
+      );
       const lineTotal = unitPrice * item.qty;
+      total += lineTotal;
 
-      totalOrderAmount += lineTotal;
-
-      processedItems.push({
-        id: 'ITEM-' + Math.random().toString(36).substring(2, 9),
+      return {
+        id: `${orderId}-${index + 1}`,
+        orderId,
         productId: item.productId,
         size: item.size,
         toppingIds: item.toppingIds,
         qty: item.qty,
         unitPrice,
         lineTotal,
-      });
-    }
+      };
+    });
 
-    const newOrder = {
-      id: 'ORD-' + Date.now(),
+    const order: Order = {
+      id: orderId,
       userId,
       status: 'PENDING',
-      total: totalOrderAmount,
-      items: processedItems,
+      total,
+      items,
       createdAt: new Date(),
     };
-
-    this.orders.push(newOrder);
+    this.saveOrder(order);
 
     return {
       message: 'Tạo đơn hàng thành công',
-      orderId: newOrder.id,
-      total: newOrder.total,
-      status: newOrder.status,
+      orderId: order.id,
+      total: order.total,
+      status: order.status,
+      createdAt: order.createdAt,
     };
+  }
+
+  private saveOrder(order: Order): void {
+    this.orders.push(order);
   }
 }

@@ -1,11 +1,23 @@
-import { getStoredToken } from './auth';
+import { getStoredToken } from '@/lib/auth';
+import type { CartItem } from '@/store/useCart';
 
-export async function submitOrderApi(items: any[]) {
+export interface CreateOrderResponse {
+  message: string;
+  orderId: string;
+  total: number;
+  status: 'PENDING';
+  createdAt: string;
+}
+
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+
+export async function submitOrderApi(items: CartItem[]): Promise<CreateOrderResponse> {
   const token = getStoredToken();
   if (!token) {
     throw new Error('Bạn chưa đăng nhập. Vui lòng đăng nhập để đặt hàng.');
   }
 
+  // Only send what the backend needs; the backend recalculates prices
   const orderPayload = {
     items: items.map((item) => ({
       productId: item.productId,
@@ -15,14 +27,12 @@ export async function submitOrderApi(items: any[]) {
     })),
   };
 
-  const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
-
   const res = await fetch(`${BASE_URL}/orders`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json',
-      'Authorization': `Bearer ${token}`,
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(orderPayload),
   });
@@ -30,8 +40,12 @@ export async function submitOrderApi(items: any[]) {
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {
-    throw new Error(data.message || `Đặt hàng thất bại (Mã lỗi: ${res.status})`);
+    if (res.status === 401) {
+      throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+    }
+    const message = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+    throw new Error(message || `Đặt hàng thất bại (mã lỗi ${res.status})`);
   }
 
-  return data;
+  return data as CreateOrderResponse;
 }
