@@ -1,47 +1,32 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ProductsService } from '../products/products.service';
-import {
-  calculateUnitPrice,
-  type ProductSize,
-  type ToppingId,
-} from './pricing';
-
-export type OrderStatus = 'PENDING';
-
-export interface OrderItem {
-  id: string;
-  orderId: string;
-  productId: string;
-  size: ProductSize;
-  toppingIds: ToppingId[];
-  qty: number;
-  unitPrice: number;
-  lineTotal: number;
-}
-
-export interface Order {
-  id: string;
-  userId: string;
-  status: OrderStatus;
-  total: number;
-  items: OrderItem[];
-  createdAt: Date;
-}
+import { Order } from './order.entity';
+import { OrderItem } from './order-item.entity';
+import { calculateUnitPrice } from './pricing';
 
 @Injectable()
 export class OrdersService {
-  // Temporary in-memory storage for Sprint 2 (moves to PostgreSQL in Sprint 3)
-  private orders: Order[] = [];
-
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
+    @InjectRepository(OrderItem)
+    private readonly orderItemRepository: Repository<OrderItem>,
+    private readonly dataSource: DataSource,
+    private readonly productsService: ProductsService,
+  ) {}
 
   async createOrder(userId: string, createOrderDto: CreateOrderDto) {
     const orderId = 'ORD-' + Date.now();
     let total = 0;
 
-    const items: OrderItem[] = createOrderDto.items.map((item, index) => {
-      const product = this.productsService.findById(item.productId);
+    const itemsToCreate: OrderItem[] = [];
+
+    for (let index = 0; index < createOrderDto.items.length; index++) {
+      const item = createOrderDto.items[index];
+      const product = await this.productsService.findById(item.productId);
       if (!product) {
         throw new BadRequestException(
           `Sản phẩm ${item.productId} không tồn tại`,
@@ -57,7 +42,7 @@ export class OrdersService {
       const lineTotal = unitPrice * item.qty;
       total += lineTotal;
 
-      return {
+      const orderItem = this.orderItemRepository.create({
         id: `${orderId}-${index + 1}`,
         orderId,
         productId: item.productId,
@@ -66,29 +51,35 @@ export class OrdersService {
         qty: item.qty,
         unitPrice,
         lineTotal,
-      };
-    });
+      });
 
-    const order: Order = {
+      itemsToCreate.push(orderItem);
+    }
+
+    const order = this.orderRepository.create({
       id: orderId,
       userId,
       status: 'PENDING',
       total,
-      items,
+      items: itemsToCreate,
       createdAt: new Date(),
-    };
-    this.saveOrder(order);
+    });
+
+    itemsToCreate.forEach((item) => {
+      item.order = order;
+    });
+
+    // Save in transaction
+    const savedOrder = await this.dataSource.transaction(async (manager) => {
+      return manager.save(Order, order);
+    });
 
     return {
       message: 'Tạo đơn hàng thành công',
-      orderId: order.id,
-      total: order.total,
-      status: order.status,
-      createdAt: order.createdAt,
+      orderId: savedOrder.id,
+      total: savedOrder.total,
+      status: savedOrder.status,
+      createdAt: savedOrder.createdAt,
     };
-  }
-
-  private saveOrder(order: Order): void {
-    this.orders.push(order);
   }
 }

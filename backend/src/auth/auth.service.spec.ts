@@ -1,16 +1,54 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { AuthService } from './auth.service';
+import { User } from './user.entity';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let _jwtService: JwtService;
+  let mockUsers: User[] = [];
+
+  const mockUserRepository = {
+    create: jest.fn().mockImplementation((dto) => ({
+      id: Date.now().toString(),
+      loyaltyPoints: 0,
+      createdAt: new Date(),
+      ...dto,
+    })),
+    save: jest.fn().mockImplementation(async (user: User) => {
+      mockUsers.push(user);
+      return user;
+    }),
+    findOneBy: jest
+      .fn()
+      .mockImplementation(
+        async (query: {
+          email?: string;
+          id?: string;
+        }): Promise<User | null> => {
+          if (query.email) {
+            return mockUsers.find((u) => u.email === query.email) ?? null;
+          }
+          if (query.id) {
+            return mockUsers.find((u) => u.id === query.id) ?? null;
+          }
+          return null;
+        },
+      ),
+  };
 
   beforeEach(async () => {
+    mockUsers = [];
+    jest.clearAllMocks();
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
+        {
+          provide: getRepositoryToken(User),
+          useValue: mockUserRepository,
+        },
         {
           provide: JwtService,
           useValue: {
@@ -21,9 +59,7 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    _jwtService = module.get<JwtService>(JwtService);
   });
-
 
   it('should be defined', () => {
     expect(service).toBeDefined();
@@ -40,6 +76,7 @@ describe('AuthService', () => {
       expect(result.email).toBe('test@brewlite.com');
       expect(result.loyaltyPoints).toBe(0);
       expect((result as any).password).toBeUndefined();
+      expect((result as any).passwordHash).toBeUndefined();
     });
 
     it('should throw ConflictException (409) if email is already registered', async () => {
