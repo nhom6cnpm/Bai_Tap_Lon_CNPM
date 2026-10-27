@@ -1,6 +1,6 @@
 {
 	"info": {
-		"name": "BrewLite API - Task 2 & 7",
+		"name": "BrewLite API - Task 2, 6 & 7",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -81,7 +81,70 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "Orders",
+			"item": [
+				{
+					"name": "Create Order",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"productId\": \"3\",\n            \"size\": \"M\",\n            \"toppingIds\": [\n                \"cream\",\n                \"pearls\"\n            ],\n            \"qty\": 1\n        },\n        {\n            \"productId\": \"4\",\n            \"size\": \"L\",\n            \"toppingIds\": [],\n            \"qty\": 2\n        }\n    ]\n}"
+						},
+						"url": "http://localhost:3001/orders"
+					}
+				},
+				{
+					"name": "Create Order (Empty Items - 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": []\n}"
+						},
+						"url": "http://localhost:3001/orders"
+					}
+				},
+				{
+					"name": "Create Order (No Token - 401)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"productId\": \"1\",\n            \"size\": \"S\",\n            \"toppingIds\": [],\n            \"qty\": 1\n        }\n    ]\n}"
+						},
+						"url": "http://localhost:3001/orders"
+					}
+				}
+			]
 		}
 	]
 }
-

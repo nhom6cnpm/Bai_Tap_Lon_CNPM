@@ -1,9 +1,13 @@
 'use client';
+import { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCart, getLineKey, selectTotalPrice } from '@/store/useCart';
 import { useHydrated } from '@/hooks/useHydrated';
 import { formatPrice } from '@/lib/formatPrice';
 import { toppingOptions } from '@/lib/productOptions';
+import { getStoredToken } from '@/lib/auth';
+import { submitOrderApi } from '@/lib/orders/orders';
 
 const toppingLabel = (ids: string[]) =>
   ids.length ? ids.map((id) => toppingOptions.find((opt) => opt.id === id)?.name ?? id).join(', ') : 'Không topping';
@@ -14,9 +18,35 @@ export default function CartPage() {
   const total = useCart(selectTotalPrice);
   const setQty = useCart((s) => s.setQty);
   const removeItem = useCart((s) => s.removeItem);
+  const router = useRouter();
 
-  const handleCheckout = () => {
-    // TODO Task 6: gọi API tạo đơn hàng, thành công thì useCart.getState().clear()
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const handleCheckout = async () => {
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    // Not logged in yet: go to login, then come back to the cart
+    if (!getStoredToken()) {
+      router.push('/login?redirect=/cart');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const data = await submitOrderApi(items);
+      useCart.getState().clear();
+      setSuccessMessage(
+        `Đặt hàng thành công! Mã đơn: ${data.orderId} · Tổng tiền: ${formatPrice(data.total)}`,
+      );
+    } catch (err: unknown) {
+      // Keep the cart unchanged so the user can try again
+      setErrorMessage(err instanceof Error ? err.message : 'Đã có lỗi xảy ra khi kết nối tới máy chủ.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -24,6 +54,15 @@ export default function CartPage() {
       <h1 className="mb-4 text-2xl font-bold">Giỏ hàng</h1>
 
       {!hydrated && <p className="text-stone-500">Đang tải giỏ hàng…</p>}
+
+      {successMessage && (
+        <div
+          role="status"
+          className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700"
+        >
+          {successMessage}
+        </div>
+      )}
 
       {hydrated && items.length === 0 && (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-10 text-center">
@@ -105,6 +144,16 @@ export default function CartPage() {
               <span>Tổng tiền</span>
               <span className="text-amber-800">{formatPrice(total)}</span>
             </div>
+
+            {errorMessage && (
+              <div
+                role="alert"
+                className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              >
+                {errorMessage}
+              </div>
+            )}
+
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <Link
                 href="/menu"
@@ -114,9 +163,10 @@ export default function CartPage() {
               </Link>
               <button
                 onClick={handleCheckout}
-                className="flex-1 rounded-full bg-amber-700 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-800"
+                disabled={loading}
+                className="flex-1 rounded-full bg-amber-700 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
               >
-                Đặt hàng
+                {loading ? 'Đang xử lý…' : 'Đặt hàng'}
               </button>
             </div>
           </div>
