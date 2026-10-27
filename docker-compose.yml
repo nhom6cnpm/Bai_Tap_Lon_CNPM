@@ -1,2 +1,61 @@
-# Khung - hoàn thiện ở Sprint 2-3 (DevOps)
-services: {}
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: brewlite-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:-brewlite}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-brewlite}
+      POSTGRES_DB: ${DB_NAME:-brewlite}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-brewlite} -d ${DB_NAME:-brewlite}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: brewlite-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PORT: 3001
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${DB_USERNAME:-brewlite}
+      DB_PASSWORD: ${DB_PASSWORD:-brewlite}
+      DB_NAME: ${DB_NAME:-brewlite}
+      DATABASE_URL: postgresql://${DB_USERNAME:-brewlite}:${DB_PASSWORD:-brewlite}@postgres:5432/${DB_NAME:-brewlite}
+      JWT_SECRET: ${JWT_SECRET:-brewlite_jwt_secret_dev}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      NODE_ENV: production
+    ports:
+      - "3001:3001"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    container_name: brewlite-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      PORT: 3000
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
