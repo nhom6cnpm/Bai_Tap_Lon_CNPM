@@ -7,15 +7,15 @@
 |---|---|
 | Backend | NestJS (TypeScript), REST API |
 | Frontend | Next.js (React, TypeScript), TailwindCSS, React Query, Zustand |
-| CSDL | PostgreSQL (thêm ở các sprint sau) |
-| DevOps | Docker Compose, GitHub Actions |
+| CSDL | PostgreSQL 16 + TypeORM (Migrations) |
+| DevOps | Docker, Docker Compose, GitHub Actions |
 
 ## Cấu trúc thư mục
 ```
 brewlite/
 ├── backend/            # NestJS API (port 3001)
 ├── frontend/           # Next.js app (port 3000)
-├── docker-compose.yml  # hoàn thiện ở Sprint 2–3
+├── docker-compose.yml  # Docker Compose full-stack (postgres, backend, frontend)
 └── README.md
 ```
 
@@ -23,32 +23,102 @@ brewlite/
 - Node.js >= 20
 - npm >= 10
 - Git
+- Docker >= 24 & Docker Compose >= 2 (nếu chạy bằng Docker)
 
 ## Cài đặt & chạy
 
-### 1. Clone repo
+### Cách 1: Chạy bằng Docker Compose (Khuyến nghị cho kiểm thử & bàn giao)
+
+Yêu cầu máy đã cài Docker Desktop hoặc Docker Engine.
+
 ```bash
+# 1. Clone repository
 git clone <URL_REPO>
 cd brewlite
+
+# 2. Khởi động toàn bộ stack (PostgreSQL + Backend + Frontend)
+docker-compose up --build
+# hoặc nếu dùng Docker Compose plugin:
+docker compose up --build
 ```
 
-### 2. Backend
+Kiểm tra:
+- **Frontend**: http://localhost:3000 (Giao diện đặt đồ uống)
+- **Backend API**: http://localhost:3001
+- **API danh sách sản phẩm**: http://localhost:3001/products
+- **PostgreSQL**: `localhost:5432` (user/pass/db: `brewlite`)
+
+Dừng và dọn dẹp container:
+```bash
+# Dừng container (dữ liệu DB trong volume pgdata vẫn giữ nguyên)
+docker-compose down
+
+# Dừng và xóa toàn bộ dữ liệu PostgreSQL để reset về ban đầu
+docker-compose down -v
+```
+
+---
+
+### Cách 2: Chạy trực tiếp trên máy host (Local Development)
+
+#### 1. Chuẩn bị cơ sở dữ liệu PostgreSQL
+Khởi tạo database PostgreSQL cục bộ hoặc chạy riêng container PostgreSQL:
+```bash
+docker run -d --name brewlite-postgres -p 5432:5432 -e POSTGRES_USER=brewlite -e POSTGRES_PASSWORD=brewlite -e POSTGRES_DB=brewlite postgres:16-alpine
+```
+
+#### 2. Backend
 ```bash
 cd backend
 cp .env.example .env
+# Điền JWT_SECRET vào .env
 npm install
 npm run start:dev
 ```
-Kiểm tra: mở http://localhost:3001 → hiện `Hello BrewLite`.
+Kiểm tra: mở http://localhost:3001 → hiện `Hello BrewLite!`. Khi backend khởi động, TypeORM sẽ tự động chạy migrations và seed 6 sản phẩm mặc định vào cơ sở dữ liệu nếu bảng rỗng.
 
-### 3. Frontend (mở terminal mới)
+#### 3. Frontend (mở terminal mới)
 ```bash
 cd frontend
 cp .env.example .env.local
 npm install
 npm run dev
 ```
-Kiểm tra: mở http://localhost:3000 → current trang Menu.
+Kiểm tra: mở http://localhost:3000 → hiển thị trang Menu món.
+
+---
+
+## Kiểm thử & Chất lượng mã nguồn
+
+### Backend
+```bash
+cd backend
+
+# Chạy kiểm thử đơn vị (Unit Tests)
+npm test
+
+# Chạy kiểm thử tích hợp (e2e Tests) — yêu cầu PostgreSQL đang chạy:
+# (Khởi động DB: docker compose up -d postgres)
+npm run test:e2e
+
+# Kiểm tra linter
+npm run lint
+
+# Tự động định dạng mã nguồn
+npm run format
+```
+
+---
+
+## Checklist Demo End-to-End (Bàn giao)
+- [ ] **Menu**: Mở http://localhost:3000 hiển thị danh sách 6 món cà phê / trà.
+- [ ] **Chi tiết món**: Bấm vào món xem giá gốc, chọn Size (S/M/L) và Topping, giá cập nhật theo thời gian thực.
+- [ ] **Giỏ hàng**: Thêm món vào giỏ, điều chỉnh số lượng, tổng tiền khớp với tính toán.
+- [ ] **Đăng ký & Đăng nhập**: Đăng ký tài khoản người dùng mới và đăng nhập nhận JWT token.
+- [ ] **Đặt hàng**: Đặt món từ giỏ hàng, đơn hàng được lưu vào PostgreSQL với trạng thái `PENDING`.
+- [ ] **Bảo toàn dữ liệu**: Dừng và khởi động lại (`docker-compose down` rồi `up`) — tài khoản và đơn hàng vẫn còn nguyên vẹn trong PostgreSQL volume `pgdata`.
+
+---
 
 ## Quy ước làm việc (Git)
 - `main`: bản chạy được, **không push trực tiếp**.
