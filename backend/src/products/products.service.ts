@@ -56,18 +56,15 @@ export class ProductsService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    // Migrations (migrationsRun: true) already ran before this — tables exist.
+    // Any error here (e.g. duplicate key) will surface and fail loudly.
     await this.seedIfEmpty();
   }
 
   async seedIfEmpty(): Promise<void> {
-    try {
-      const count = await this.productRepository.count();
-      if (count === 0) {
-        await this.productRepository.save(INITIAL_PRODUCTS);
-      }
-    } catch (error) {
-      // Avoid failing app boot if DB connection is initializing
-      console.warn('Could not seed products:', error);
+    const count = await this.productRepository.count();
+    if (count === 0) {
+      await this.productRepository.save(INITIAL_PRODUCTS);
     }
   }
 

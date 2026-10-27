@@ -17,36 +17,18 @@ import { OrderItem } from './orders/order-item.entity';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const isProduction =
-          configService.get<string>('NODE_ENV') === 'production';
-        const dbHost = configService.get<string>('DB_HOST');
-        const databaseUrl = configService.get<string>('DATABASE_URL');
-
-        if (dbHost) {
-          return {
-            type: 'postgres',
-            host: dbHost,
-            port: parseInt(configService.get<string>('DB_PORT', '5432'), 10),
-            username: configService.get<string>('DB_USERNAME', 'brewlite'),
-            password: configService.get<string>('DB_PASSWORD', 'brewlite'),
-            database: configService.get<string>('DB_NAME', 'brewlite'),
-            entities: [Product, User, Order, OrderItem],
-            synchronize: !isProduction,
-            logging: !isProduction,
-          };
-        }
-
-        return {
-          type: 'postgres',
-          url:
-            databaseUrl ||
-            'postgresql://brewlite:brewlite@localhost:5432/brewlite',
-          entities: [Product, User, Order, OrderItem],
-          synchronize: !isProduction,
-          logging: !isProduction,
-        };
-      },
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres',
+        url:
+          configService.get<string>('DATABASE_URL') ??
+          'postgresql://brewlite:brewlite@localhost:5432/brewlite',
+        entities: [Product, User, Order, OrderItem],
+        // Migrations run automatically on app startup (also handles seed order)
+        migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
+        migrationsRun: true,
+        synchronize: false,
+        logging: configService.get<string>('NODE_ENV') !== 'production',
+      }),
     }),
     ProductsModule,
     AuthModule,
