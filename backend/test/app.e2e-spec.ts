@@ -21,7 +21,6 @@ describe('AppController (e2e)', () => {
       .get('/')
       .expect(200)
       .expect('Hello BrewLite!');
-
   });
 
   afterEach(async () => {
