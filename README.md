@@ -7,7 +7,7 @@
 |---|---|
 | Backend | NestJS (TypeScript), REST API |
 | Frontend | Next.js (React, TypeScript), TailwindCSS, React Query, Zustand |
-| CSDL | PostgreSQL 16 + TypeORM |
+| CSDL | PostgreSQL 16 + TypeORM (Migrations) |
 | DevOps | Docker, Docker Compose, GitHub Actions |
 
 ## Cấu trúc thư mục
@@ -50,7 +50,7 @@ Kiểm tra:
 
 Dừng và dọn dẹp container:
 ```bash
-# Dừng container
+# Dừng container (dữ liệu DB trong volume pgdata vẫn giữ nguyên)
 docker-compose down
 
 # Dừng và xóa toàn bộ dữ liệu PostgreSQL để reset về ban đầu
@@ -71,10 +71,11 @@ docker run -d --name brewlite-postgres -p 5432:5432 -e POSTGRES_USER=brewlite -e
 ```bash
 cd backend
 cp .env.example .env
+# Điền JWT_SECRET vào .env
 npm install
 npm run start:dev
 ```
-Kiểm tra: mở http://localhost:3001 → hiện `Hello BrewLite!`. Khi backend khởi động, TypeORM sẽ tự động đồng bộ schema và seed 6 sản phẩm mặc định vào cơ sở dữ liệu nếu bảng rỗng.
+Kiểm tra: mở http://localhost:3001 → hiện `Hello BrewLite!`. Khi backend khởi động, TypeORM sẽ tự động chạy migrations và seed 6 sản phẩm mặc định vào cơ sở dữ liệu nếu bảng rỗng.
 
 #### 3. Frontend (mở terminal mới)
 ```bash
@@ -96,12 +97,26 @@ cd backend
 # Chạy kiểm thử đơn vị (Unit Tests)
 npm test
 
+# Chạy kiểm thử tích hợp (e2e Tests) — yêu cầu PostgreSQL đang chạy:
+# (Khởi động DB: docker compose up -d postgres)
+npm run test:e2e
+
 # Kiểm tra linter
 npm run lint
 
 # Tự động định dạng mã nguồn
 npm run format
 ```
+
+---
+
+## Checklist Demo End-to-End (Bàn giao)
+- [ ] **Menu**: Mở http://localhost:3000 hiển thị danh sách 6 món cà phê / trà.
+- [ ] **Chi tiết món**: Bấm vào món xem giá gốc, chọn Size (S/M/L) và Topping, giá cập nhật theo thời gian thực.
+- [ ] **Giỏ hàng**: Thêm món vào giỏ, điều chỉnh số lượng, tổng tiền khớp với tính toán.
+- [ ] **Đăng ký & Đăng nhập**: Đăng ký tài khoản người dùng mới và đăng nhập nhận JWT token.
+- [ ] **Đặt hàng**: Đặt món từ giỏ hàng, đơn hàng được lưu vào PostgreSQL với trạng thái `PENDING`.
+- [ ] **Bảo toàn dữ liệu**: Dừng và khởi động lại (`docker-compose down` rồi `up`) — tài khoản và đơn hàng vẫn còn nguyên vẹn trong PostgreSQL volume `pgdata`.
 
 ---
 
