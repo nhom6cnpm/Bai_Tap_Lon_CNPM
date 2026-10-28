@@ -6,8 +6,9 @@ import {
   OneToMany,
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
+import type { OrderStatus } from './order-status';
 
-export type OrderStatus = 'PENDING';
+export type { OrderStatus } from './order-status';
 
 @Entity('orders')
 export class Order {

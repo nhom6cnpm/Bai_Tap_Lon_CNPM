@@ -4,12 +4,23 @@ import { Product } from './src/products/product.entity';
 import { User } from './src/auth/user.entity';
 import { Order } from './src/orders/order.entity';
 import { OrderItem } from './src/orders/order-item.entity';
+import { Ingredient } from './src/inventory/ingredient.entity';
+import { RecipeItem } from './src/inventory/recipe-item.entity';
+import { ToppingRecipe } from './src/inventory/topping-recipe.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
   url:
     process.env.DATABASE_URL ??
     'postgresql://brewlite:brewlite@localhost:5432/brewlite',
-  entities: [Product, User, Order, OrderItem],
+  entities: [
+    Product,
+    User,
+    Order,
+    OrderItem,
+    Ingredient,
+    RecipeItem,
+    ToppingRecipe,
+  ],
   migrations: ['src/migrations/*{.ts,.js}'],
 });

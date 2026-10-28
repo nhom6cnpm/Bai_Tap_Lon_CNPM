@@ -10,6 +10,9 @@ import { Product } from './products/product.entity';
 import { User } from './auth/user.entity';
 import { Order } from './orders/order.entity';
 import { OrderItem } from './orders/order-item.entity';
+import { Ingredient } from './inventory/ingredient.entity';
+import { RecipeItem } from './inventory/recipe-item.entity';
+import { ToppingRecipe } from './inventory/topping-recipe.entity';
 
 @Module({
   imports: [
@@ -22,7 +25,15 @@ import { OrderItem } from './orders/order-item.entity';
         url:
           configService.get<string>('DATABASE_URL') ??
           'postgresql://brewlite:brewlite@localhost:5432/brewlite',
-        entities: [Product, User, Order, OrderItem],
+        entities: [
+          Product,
+          User,
+          Order,
+          OrderItem,
+          Ingredient,
+          RecipeItem,
+          ToppingRecipe,
+        ],
         // Migrations run automatically on app startup (also handles seed order)
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
         migrationsRun: true,
