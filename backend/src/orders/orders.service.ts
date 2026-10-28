@@ -8,7 +8,8 @@ import { OrderItem } from './order-item.entity';
 import { calculateUnitPrice } from './pricing';
 
 @Injectable()
-export class OrdersService {
+export type OrderStatus = 'PENDING' | 'PAID' | 'PAYMENT_FAILED' | 'CANCELLED';
+  export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
@@ -81,5 +82,20 @@ export class OrdersService {
       status: savedOrder.status,
       createdAt: savedOrder.createdAt,
     };
+async findById(orderId: string): Promise<Order | null> {
+    return this.orderRepository.findOne({
+      where: { id: orderId },
+      relations: ['items'],
+    });
+  }
+
+  async updateOrderStatus(orderId: string, status: OrderStatus): Promise<Order> {
+    const order = await this.findById(orderId);
+    if (!order) {
+      throw new BadRequestException(`Đơn hàng ${orderId} không tồn tại`);
+    }
+    order.status = status;
+    return this.orderRepository.save(order);
+  }
   }
 }
