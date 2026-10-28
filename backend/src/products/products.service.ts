@@ -1,80 +1,51 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from './product.entity';
+import { InventoryService } from '../inventory/inventory.service';
 
-export const INITIAL_PRODUCTS: Product[] = [
-  {
-    id: '1',
-    name: 'Cà phê sữa',
-    price: 35000,
-    imageUrl: '/images/coffee.jpg',
-    stock: 100,
-  },
-  {
-    id: '2',
-    name: 'Americano',
-    price: 40000,
-    imageUrl: '/images/americano.jpg',
-    stock: 100,
-  },
-  {
-    id: '3',
-    name: 'Cappuccino',
-    price: 45000,
-    imageUrl: '/images/cappuccino.jpg',
-    stock: 100,
-  },
-  {
-    id: '4',
-    name: 'Trà đào',
-    price: 39000,
-    imageUrl: '/images/peach-tea.jpg',
-    stock: 100,
-  },
-  {
-    id: '5',
-    name: 'Trà vải',
-    price: 39000,
-    imageUrl: '/images/lychee-tea.jpg',
-    stock: 100,
-  },
-  {
-    id: '6',
-    name: 'Bạc xỉu',
-    price: 35000,
-    imageUrl: '/images/bac-xiu.jpg',
-    stock: 100,
-  },
-];
+// `stock` = cups still sellable (size S, no topping), computed from ingredients
+export interface ProductWithStock {
+  id: string;
+  name: string;
+  price: number;
+  imageUrl: string;
+  stock: number;
+}
 
+const withStock = (product: Product, stock: number): ProductWithStock => ({
+  id: product.id,
+  name: product.name,
+  price: product.price,
+  imageUrl: product.imageUrl,
+  stock,
+});
+
+// Products, ingredients and recipes are seeded by migration 1761650000000-AddInventory
 @Injectable()
-export class ProductsService implements OnModuleInit {
+export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
+    private readonly inventoryService: InventoryService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
-    // Migrations (migrationsRun: true) already ran before this — tables exist.
-    // Any error here (e.g. duplicate key) will surface and fail loudly.
-    await this.seedIfEmpty();
-  }
-
-  async seedIfEmpty(): Promise<void> {
-    const count = await this.productRepository.count();
-    if (count === 0) {
-      await this.productRepository.save(INITIAL_PRODUCTS);
-    }
-  }
-
-  async findAll(): Promise<Product[]> {
-    return this.productRepository.find({
+  async findAll(): Promise<ProductWithStock[]> {
+    const products = await this.productRepository.find({
       order: { id: 'ASC' },
     });
+    const cups = await this.inventoryService.getSellableCups(
+      products.map((p) => p.id),
+    );
+    return products.map((p) => withStock(p, cups.get(p.id) ?? 0));
   }
 
-  async findById(id: string): Promise<Product | null> {
-    return this.productRepository.findOneBy({ id });
+  async findById(id: string): Promise<ProductWithStock | null> {
+    const product = await this.productRepository.findOneBy({ id });
+    if (!product) {
+      return null;
+    }
+    const cups = await this.inventoryService.getSellableCups([id]);
+    return withStock(product, cups.get(id) ?? 0);
   }
 }

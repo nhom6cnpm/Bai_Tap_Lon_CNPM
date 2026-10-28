@@ -13,7 +13,4 @@ export class Product {
 
   @Column({ type: 'varchar', length: 500 })
   imageUrl!: string;
-
-  @Column({ type: 'int', default: 0 })
-  stock!: number;
 }
