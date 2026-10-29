@@ -48,6 +48,16 @@ Kiểm tra:
 - **API danh sách sản phẩm**: http://localhost:3001/products
 - **PostgreSQL**: `localhost:5432` (user/pass/db: `brewlite`)
 
+### Quét QR thanh toán bằng điện thoại khi chạy Docker
+
+Điện thoại và máy tính phải cùng mạng Wi-Fi. Ở **thư mục gốc của repo** (cùng cấp với `docker-compose.yml`), tạo file `.env` và điền địa chỉ IPv4 của máy tính:
+
+```env
+NEXT_PUBLIC_APP_URL=http://<IP-máy-tính>:3000
+```
+
+Trên Windows, chạy `ipconfig` để xem IPv4 của Wi-Fi. Sau khi đặt biến này hoặc khi địa chỉ IP thay đổi, chạy `docker compose up -d --build frontend` để build lại frontend, rồi tải lại trang thanh toán. QR sẽ mở trang xác nhận BrewLite Pay giả lập trên điện thoại; đây không phải giao dịch ngân hàng thật. File `.env` được Git bỏ qua.
+
 Dừng và dọn dẹp container:
 ```bash
 # Dừng container (dữ liệu DB trong volume pgdata vẫn giữ nguyên)
