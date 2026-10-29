@@ -1,6 +1,6 @@
 {
 	"info": {
-		"name": "BrewLite API - Task 2, 6, 7 & 10 availability",
+		"name": "BrewLite API - Task 2, 6, 7, 8 & 10 availability",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -161,6 +161,129 @@
 							"raw": "{\n    \"items\": [\n        {\n            \"productId\": \"1\",\n            \"size\": \"S\",\n            \"toppingIds\": [],\n            \"qty\": 1\n        }\n    ]\n}"
 						},
 						"url": "http://localhost:3001/orders"
+					}
+				}
+			]
+		},
+		{
+			"name": "Payments",
+			"item": [
+				{
+					"name": "Create Payment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}"
+							}
+						],
+						"url": "http://localhost:3001/payments",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"orderId\": \"<ORDER_ID>\",\n    \"method\": \"WALLET\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Create Payment (Missing Idempotency-Key - 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/payments",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"orderId\": \"<ORDER_ID>\",\n    \"method\": \"CARD\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Get Payment",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/payments/<PAYMENT_ID>"
+					}
+				},
+				{
+					"name": "Mock Gateway - Payment Info",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "http://localhost:3001/mock-gateway/<PAYMENT_ID>"
+					}
+				},
+				{
+					"name": "Mock Gateway - Confirm SUCCESS",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "http://localhost:3001/mock-gateway/<PAYMENT_ID>/confirm",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"result\": \"SUCCESS\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Mock Gateway - Confirm FAILED",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "http://localhost:3001/mock-gateway/<PAYMENT_ID>/confirm",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"result\": \"FAILED\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Callback (Invalid Signature - 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "http://localhost:3001/payments/callback",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"paymentId\": \"<PAYMENT_ID>\",\n    \"result\": \"SUCCESS\",\n    \"signature\": \"invalid\"\n}"
+						}
 					}
 				}
 			]

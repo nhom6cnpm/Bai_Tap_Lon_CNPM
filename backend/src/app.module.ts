@@ -6,6 +6,8 @@ import { AppService } from './app.service';
 import { ProductsModule } from './products/products.module';
 import { AuthModule } from './auth/auth.module';
 import { OrdersModule } from './orders/orders.module';
+import { PaymentsModule } from './payments/payments.module';
+import { MockGatewayModule } from './mock-gateway/mock-gateway.module';
 import { Product } from './products/product.entity';
 import { User } from './auth/user.entity';
 import { Order } from './orders/order.entity';
@@ -13,6 +15,7 @@ import { OrderItem } from './orders/order-item.entity';
 import { Ingredient } from './inventory/ingredient.entity';
 import { RecipeItem } from './inventory/recipe-item.entity';
 import { ToppingRecipe } from './inventory/topping-recipe.entity';
+import { Payment } from './payments/entities/payment.entity';
 
 @Module({
   imports: [
@@ -33,6 +36,7 @@ import { ToppingRecipe } from './inventory/topping-recipe.entity';
           Ingredient,
           RecipeItem,
           ToppingRecipe,
+          Payment,
         ],
         // Migrations run automatically on app startup (also handles seed order)
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
@@ -44,6 +48,8 @@ import { ToppingRecipe } from './inventory/topping-recipe.entity';
     ProductsModule,
     AuthModule,
     OrdersModule,
+    PaymentsModule,
+    MockGatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

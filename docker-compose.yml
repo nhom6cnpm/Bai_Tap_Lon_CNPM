@@ -16,8 +16,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-
-  backend:
+ backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -32,6 +31,7 @@ services:
       DATABASE_URL: postgresql://brewlite:brewlite@postgres:5432/brewlite
       JWT_SECRET: ${JWT_SECRET:-brewlite_jwt_secret_dev}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
+      PAYMENT_GATEWAY_SECRET: ${PAYMENT_GATEWAY_SECRET:-brewlite_mock_secret_key_sprint3}
       NODE_ENV: production
     ports:
       - "3001:3001"
