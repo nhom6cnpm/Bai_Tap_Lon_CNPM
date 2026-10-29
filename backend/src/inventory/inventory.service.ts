@@ -1,6 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { Ingredient } from './ingredient.entity';
 import { RecipeItem } from './recipe-item.entity';
 import { ToppingRecipe } from './topping-recipe.entity';
@@ -40,10 +44,12 @@ export class InventoryService {
     private readonly toppingRecipeRepository: Repository<ToppingRecipe>,
   ) {}
 
-  async getRecipeBook(): Promise<RecipeBook> {
+  async getRecipeBook(manager?: EntityManager): Promise<RecipeBook> {
     const [recipes, toppingRecipes] = await Promise.all([
-      this.recipeRepository.find(),
-      this.toppingRecipeRepository.find(),
+      (manager?.getRepository(RecipeItem) ?? this.recipeRepository).find(),
+      (
+        manager?.getRepository(ToppingRecipe) ?? this.toppingRecipeRepository
+      ).find(),
     ]);
     const toEntry = (row: RecipeItem | ToppingRecipe): RecipeEntry => ({
       ingredientId: row.ingredientId,
@@ -90,5 +96,97 @@ export class InventoryService {
       this.getStockMap(),
     ]);
     return selectionAvailability(book, stock, lines);
+  }
+
+  /** Caller owns the transaction: a later shortage rolls back all earlier deductions. */
+  async reserveIngredients(
+    lines: readonly OrderLine[],
+    manager: EntityManager,
+  ) {
+    const book = await this.getRecipeBook(manager);
+    for (const line of lines) {
+      if (
+        !book.products.get(line.productId)?.length ||
+        line.toppingIds.some((id) => !book.toppings.get(id)?.length)
+      ) {
+        throw new BadRequestException(
+          'Món hoặc topping chưa có công thức nguyên liệu',
+        );
+      }
+    }
+    const amounts = requiredForLines(book, lines);
+    const repository = manager.getRepository(Ingredient);
+    // Every transaction touches ingredients in the same order to avoid deadlocks.
+    for (const [ingredientId, amount] of [...amounts].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      if (
+        !Number.isSafeInteger(amount) ||
+        amount <= 0 ||
+        amount > 2_147_483_647
+      ) {
+        throw new BadRequestException(
+          'Số lượng nguyên liệu yêu cầu không hợp lệ',
+        );
+      }
+      let reserved = false;
+      for (let attempt = 0; attempt < 8; attempt++) {
+        const ingredient = await repository.findOneBy({ id: ingredientId });
+        if (!ingredient || ingredient.quantity < amount) {
+          throw new BadRequestException(
+            `${ingredient?.name ?? ingredientId} không đủ nguyên liệu`,
+          );
+        }
+        const result = await repository
+          .createQueryBuilder()
+          .update(Ingredient)
+          .set({
+            quantity: () => '"quantity" - :amount',
+            version: () => '"version" + 1',
+          })
+          .where(
+            '"id" = :id AND "version" = :version AND "quantity" >= :amount',
+            {
+              id: ingredientId,
+              version: ingredient.version,
+              amount,
+            },
+          )
+          .execute();
+        if (result.affected === 1) {
+          reserved = true;
+          break;
+        }
+        // A concurrent writer won. Read its committed quantity/version before retrying.
+      }
+      if (!reserved) {
+        throw new ConflictException('Tồn kho đang thay đổi, vui lòng thử lại');
+      }
+    }
+    return amounts;
+  }
+
+  /** Atomic increments preserve concurrent reservations and advance their versions. */
+  async releaseIngredients(
+    amounts: ReadonlyMap<string, number>,
+    manager: EntityManager,
+  ) {
+    for (const [id, amount] of [...amounts].sort(([a], [b]) =>
+      a.localeCompare(b),
+    )) {
+      const result = await manager
+        .getRepository(Ingredient)
+        .createQueryBuilder()
+        .update(Ingredient)
+        .set({
+          quantity: () => '"quantity" + :amount',
+          version: () => '"version" + 1',
+        })
+        .where('"id" = :id', { id, amount })
+        .execute();
+      if (result.affected !== 1) {
+        throw new ConflictException('Không thể hoàn nguyên liệu cho đơn hàng');
+      }
+    }
   }
 }

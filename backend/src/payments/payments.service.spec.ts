@@ -34,6 +34,9 @@ describe('PaymentsService', () => {
     id,
     status,
   }));
+  const lockById = jest.fn(async (id: string) => findById(id));
+  const expireIfNeeded = jest.fn(async () => false);
+  const ensureInventoryReservation = jest.fn(async () => undefined);
 
   // In-memory stand-in for the payments table
   const matches = (p: Payment, where: Partial<Payment>) =>
@@ -81,7 +84,13 @@ describe('PaymentsService', () => {
         },
         {
           provide: OrdersService,
-          useValue: { findById, updateOrderStatus },
+          useValue: {
+            findById,
+            updateOrderStatus,
+            lockById,
+            expireIfNeeded,
+            ensureInventoryReservation,
+          },
         },
         {
           provide: ConfigService,

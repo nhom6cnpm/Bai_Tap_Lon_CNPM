@@ -105,6 +105,17 @@
 			"name": "Orders",
 			"item": [
 				{
+					"name": "Cancel Own Order (Repeat Does Not Refund Twice)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer <YOUR_JWT_TOKEN>" }
+						],
+						"url": "http://localhost:3001/orders/<ORDER_ID>/cancel",
+						"description": "Task 10c: cancel an owned PENDING/PAYMENT_FAILED/PAID order. Returns CANCELLED, cancelReason, cancelledAt and expiresAt. Repeat requests do not refund stock twice."
+					}
+				},
+				{
 					"name": "Create Order",
 					"request": {
 						"method": "POST",

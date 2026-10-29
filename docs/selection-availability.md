@@ -70,8 +70,8 @@ riêng, cả hai dòng đều có vẻ còn hàng nhưng tổng nhu cầu thực
 
 ## Phối hợp với Task 10c và Task 8
 
-API này báo sớm theo lượng nguyên liệu đọc tại thời điểm kiểm tra. Task 10c vẫn
-phải kiểm tra/trừ nguyên liệu trong transaction với optimistic locking khi tạo đơn,
+API này báo sớm theo lượng nguyên liệu đọc tại thời điểm kiểm tra. Task 10c
+kiểm tra/trừ nguyên liệu trong transaction với optimistic locking khi tạo đơn,
 vì khách khác có thể đặt hàng ngay sau lần kiểm tra này.
 
 Giữ phương án của Issue #18/#21: trừ khi tạo PENDING; PAID không trừ thêm;
@@ -79,8 +79,10 @@ PAYMENT_FAILED giữ trong hạn; CANCELLED/hết hạn **5 phút** hoàn đúng
 Thời hạn 5 phút theo cập nhật của nhóm và Issue #21 ngày 29/10/2026, tính từ lúc
 tạo đơn; thử lại thanh toán không gia hạn giữ nguyên liệu. Issue #18 còn ghi
 15 phút nên cần đồng bộ checkout/callback và đồng hồ đếm ngược khi tích hợp.
-Thay đổi này không triển khai Payment, callback, hủy/hết hạn, mã giảm giá hay điểm
-thưởng. Những phần đó cần tích hợp trong các thay đổi Task 10c/d/e và Task 8.
+Phần giữ/hủy/hết hạn và phối hợp callback đã được triển khai riêng trong
+[Task 10c](task-10c-inventory.md). API availability vẫn chỉ đọc và không thay thế
+transaction tạo đơn. Mã giảm giá/điểm và các kiểm tra bổ sung Task 10d/e tiếp tục
+theo checklist.
 
 ## Kiểm tra
 

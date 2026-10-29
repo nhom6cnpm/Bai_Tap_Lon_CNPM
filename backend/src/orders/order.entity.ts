@@ -7,6 +7,7 @@ import {
 } from 'typeorm';
 import { OrderItem } from './order-item.entity';
 import type { OrderStatus } from './order-status';
+import type { CancellationReason } from './order-expiry';
 
 export type { OrderStatus } from './order-status';
 
@@ -29,4 +30,22 @@ export class Order {
 
   @CreateDateColumn()
   createdAt!: Date;
+
+  @Column({
+    type: 'timestamptz',
+    default: () => "CURRENT_TIMESTAMP + INTERVAL '5 minutes'",
+  })
+  expiresAt!: Date;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  inventoryReservedAt!: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  inventoryReleasedAt!: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  cancelledAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  cancelReason!: CancellationReason | null;
 }

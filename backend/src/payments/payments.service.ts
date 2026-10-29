@@ -52,64 +52,68 @@ export class PaymentsService {
     if (!idempotencyKey || !idempotencyKey.trim()) {
       throw new BadRequestException('Thiếu header Idempotency-Key');
     }
-
-    const order = await this.ordersService.findById(dto.orderId);
-    if (!order) {
-      throw new NotFoundException(`Không tìm thấy đơn hàng ${dto.orderId}`);
-    }
-
-    if (order.userId !== userId) {
-      throw new ForbiddenException(
-        'Bạn không có quyền thanh toán đơn hàng này',
-      );
-    }
-
-    if (order.status === 'PAID') {
-      throw new BadRequestException('Đơn hàng này đã được thanh toán');
-    }
-    if (order.status === 'CANCELLED') {
-      throw new BadRequestException('Đơn hàng đã hết hạn hoặc đã bị hủy');
-    }
-
-    const existingPayment = await this.paymentRepository.findOneBy({
-      idempotencyKey,
-      orderId: dto.orderId,
-    });
-    if (existingPayment) {
-      return this.toSessionResponse(existingPayment);
-    }
-
-    const paymentId =
-      'PAY-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-
     try {
       const saved = await this.dataSource.transaction(async (manager) => {
-        // Retry: PAYMENT_FAILED -> PENDING first (đề mục 9.1, "thử lại")
+        const order = await this.ordersService.lockById(dto.orderId, manager);
+        if (!order)
+          throw new NotFoundException(`Không tìm thấy đơn hàng ${dto.orderId}`);
+        if (order.userId !== userId) {
+          throw new ForbiddenException(
+            'Bạn không có quyền thanh toán đơn hàng này',
+          );
+        }
+        if (
+          (await this.ordersService.expireIfNeeded(order, manager)) ||
+          order.status === 'CANCELLED'
+        ) {
+          return null;
+        }
+        if (!['PENDING', 'PAYMENT_FAILED'].includes(order.status)) {
+          throw new BadRequestException(
+            'Đơn hàng này không còn chờ thanh toán',
+          );
+        }
+        const repository = manager.getRepository(Payment);
+        const existing = await repository.findOneBy({
+          idempotencyKey,
+          orderId: order.id,
+        });
+        if (existing) return existing;
         if (order.status === 'PAYMENT_FAILED') {
-          await this.ordersService.updateOrderStatus(
+          const retried = await this.ordersService.updateOrderStatus(
             order.id,
             'PENDING',
             manager,
           );
+          if (retried.status === 'CANCELLED') return null;
+          Object.assign(order, retried);
+        } else {
+          await this.ordersService.ensureInventoryReservation(order, manager);
         }
-        const payment = manager.getRepository(Payment).create({
-          id: paymentId,
-          orderId: order.id,
-          userId,
-          idempotencyKey,
-          amount: order.total, // never trust an amount from the client
-          method: dto.method,
-          status: 'PENDING',
-          gatewayUrl: `${frontendUrl}/mock-gateway/${paymentId}`,
-        });
-        return manager.save(payment);
+        // Reserving a legacy order can wait on stock; recheck its original deadline.
+        if (await this.ordersService.expireIfNeeded(order, manager))
+          return null;
+        const paymentId = `PAY-${crypto.randomUUID()}`;
+        const frontendUrl =
+          this.configService.get<string>('FRONTEND_URL') ||
+          'http://localhost:3000';
+        return manager.save(
+          repository.create({
+            id: paymentId,
+            orderId: order.id,
+            userId,
+            idempotencyKey,
+            amount: order.total,
+            method: dto.method,
+            status: 'PENDING',
+            gatewayUrl: `${frontendUrl}/mock-gateway/${paymentId}`,
+          }),
+        );
       });
+      // Throw outside the transaction so a timeout and its refund stay committed.
+      if (!saved) throw new BadRequestException('Đơn đã hết hạn');
       return this.toSessionResponse(saved);
     } catch (error) {
-      // Same Idempotency-Key sent twice at the same time: the UNIQUE constraint
-      // rejects the second insert, so return the session created by the first one
       if (
         error instanceof QueryFailedError &&
         (error.driverError as { code?: string })?.code === UNIQUE_VIOLATION
@@ -117,7 +121,11 @@ export class PaymentsService {
         const winner = await this.paymentRepository.findOneBy({
           idempotencyKey,
         });
-        if (winner && winner.orderId === dto.orderId) {
+        if (
+          winner &&
+          winner.orderId === dto.orderId &&
+          winner.userId === userId
+        ) {
           return this.toSessionResponse(winner);
         }
         throw new BadRequestException(
@@ -193,27 +201,33 @@ export class PaymentsService {
     if (!this.verifySignature(dto.paymentId, dto.result, dto.signature)) {
       throw new BadRequestException('Chữ ký không hợp lệ (Invalid signature)');
     }
-
+    const original = await this.paymentRepository.findOneBy({
+      id: dto.paymentId,
+    });
+    if (!original)
+      throw new NotFoundException(
+        `Không tìm thấy phiên thanh toán ${dto.paymentId}`,
+      );
     const targetOrderStatus: OrderStatus =
       dto.result === 'SUCCESS' ? 'PAID' : 'PAYMENT_FAILED';
     const targetPaymentStatus: PaymentStatus =
       dto.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
-
-    // Payment and order are updated together: either both change or neither does
-    return this.dataSource.transaction(async (manager) => {
+    const outcome = await this.dataSource.transaction(async (manager) => {
+      // Same lock order as checkout/cancellation: order, then payment, then stock.
+      const order = await this.ordersService.lockById(
+        original.orderId,
+        manager,
+      );
+      if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
       const repository = manager.getRepository(Payment);
-      // Row lock: a duplicate callback arriving at the same time waits here,
-      // then sees the payment is no longer PENDING
       const payment = await repository.findOne({
         where: { id: dto.paymentId },
         lock: { mode: 'pessimistic_write' },
       });
-      if (!payment) {
+      if (!payment)
         throw new NotFoundException(
           `Không tìm thấy phiên thanh toán ${dto.paymentId}`,
         );
-      }
-
       if (payment.status !== 'PENDING') {
         return {
           message: 'Callback đã được xử lý trước đó',
@@ -221,15 +235,21 @@ export class PaymentsService {
           status: payment.status,
         };
       }
-
-      payment.status = targetPaymentStatus;
-      await repository.save(payment);
-      await this.ordersService.updateOrderStatus(
-        payment.orderId,
+      if (
+        (await this.ordersService.expireIfNeeded(order, manager)) ||
+        order.status === 'CANCELLED'
+      ) {
+        return null;
+      }
+      await this.ordersService.ensureInventoryReservation(order, manager);
+      const updated = await this.ordersService.updateOrderStatus(
+        order.id,
         targetOrderStatus,
         manager,
       );
-
+      if (updated.status === 'CANCELLED') return null;
+      payment.status = targetPaymentStatus;
+      await repository.save(payment);
       return {
         message: 'Xử lý callback thành công',
         paymentId: payment.id,
@@ -237,5 +257,8 @@ export class PaymentsService {
         orderStatus: targetOrderStatus,
       };
     });
+    if (!outcome)
+      throw new BadRequestException('Đơn đã hết hạn hoặc đã bị hủy');
+    return outcome;
   }
 }

@@ -38,19 +38,25 @@ Bản cũ được sao lưu tại `.task9-recovery/task9-before-step1-20261029-2
 trong workspace. Đã đối chiếu hash 47 file làm việc và 5 file metadata Git, tất cả
 giữ nguyên sau khi chuẩn bị nhánh. Chưa push hoặc merge vào main.
 
-## 2. Hoàn thiện Task 10c — tồn kho và thời hạn 5 phút — bước tiếp theo
+## 2. Hoàn thiện Task 10c — đã triển khai và kiểm thử backend
 
-- [ ] Thống nhất với Tài/Bách thời hạn 5 phút và dữ liệu thời hạn dùng chung;
-      Issue #18 còn ghi 15 phút, cần đồng bộ checkout/callback.
-- [ ] Tính nguyên liệu cả đơn; tạo đơn và trừ kho trong một transaction với
+- [x] Backend áp dụng hạn 5 phút và trả expiresAt trong response tạo đơn.
+- [ ] Nhóm đồng bộ checkout/Issue #18 với hạn 5 phút và expiresAt của backend;
+      chưa gửi tin nhắn hoặc sửa Issue thay thành viên nhóm.
+- [x] Tính nguyên liệu cả đơn; tạo đơn và trừ kho trong một transaction với
       optimistic locking bằng version; thiếu nguyên liệu thì không lưu/trừ gì.
-- [ ] Lưu đủ thông tin để hủy/hết hạn hoàn đúng nguyên liệu, đúng một lần.
-- [ ] Tự hủy PENDING/PAYMENT_FAILED quá hạn; thử lại không kéo dài thời hạn.
-- [ ] Phối hợp cập nhật trạng thái để hết hạn và thanh toán không cùng thành công.
-- [ ] Kiểm thử PostgreSQL thật: đặt đồng thời, rollback, hủy/hoàn lặp, hết hạn,
+- [x] Lưu đủ thông tin để hủy/hết hạn hoàn đúng nguyên liệu, đúng một lần.
+- [x] Tự hủy PENDING/PAYMENT_FAILED quá hạn; thử lại không kéo dài thời hạn.
+- [x] Cập nhật trạng thái dưới khóa đơn chung để hết hạn và thanh toán không cùng thành công.
+- [x] Kiểm thử PostgreSQL thật: đặt đồng thời, rollback, hủy/hoàn lặp, hết hạn,
       thanh toán sát thời hạn; dùng database kiểm thử riêng.
+- [x] 108 test không DB và 24 test e2e PostgreSQL qua; lint/build hai phần qua.
+- [x] Build image backend Docker và khởi động kiểm tra với database test; không
+      thay container backend/frontend hoặc chạy migration trên DB đồ án hiện tại.
 
-## 3. Hoàn thiện Task 9 và đồng bộ giao diện
+Chi tiết: [Task 10c — API, migration và kiểm thử](task-10c-inventory.md).
+
+## 3. Hoàn thiện Task 9 và đồng bộ giao diện — bước tiếp theo
 
 - [ ] Ghép phần task 9 cũ vào nền code nhóm, dùng chung auth và schema đơn hàng.
 - [ ] GET /orders/me và /orders/:id có JWT; chỉ truy cập đơn của mình;

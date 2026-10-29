@@ -16,6 +16,7 @@ import { Ingredient } from './inventory/ingredient.entity';
 import { RecipeItem } from './inventory/recipe-item.entity';
 import { ToppingRecipe } from './inventory/topping-recipe.entity';
 import { Payment } from './payments/entities/payment.entity';
+import { OrderInventoryReservation } from './orders/order-inventory-reservation.entity';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { Payment } from './payments/entities/payment.entity';
           RecipeItem,
           ToppingRecipe,
           Payment,
+          OrderInventoryReservation,
         ],
         // Migrations run automatically on app startup (also handles seed order)
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],

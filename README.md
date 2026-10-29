@@ -5,6 +5,8 @@
 **Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
 — checklist, phạm vi đã chốt và bước tiếp theo.
 
+Task 10c: [giữ nguyên liệu 5 phút, hủy/hết hạn và kiểm thử PostgreSQL](docs/task-10c-inventory.md).
+
 ## Công nghệ
 
 API và giao diện số ly còn bán theo size/topping:

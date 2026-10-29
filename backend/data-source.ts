@@ -8,6 +8,7 @@ import { Ingredient } from './src/inventory/ingredient.entity';
 import { RecipeItem } from './src/inventory/recipe-item.entity';
 import { ToppingRecipe } from './src/inventory/topping-recipe.entity';
 import { Payment } from './src/payments/entities/payment.entity';
+import { OrderInventoryReservation } from './src/orders/order-inventory-reservation.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -23,6 +24,7 @@ export const AppDataSource = new DataSource({
     RecipeItem,
     ToppingRecipe,
     Payment,
+    OrderInventoryReservation,
   ],
   migrations: ['src/migrations/*{.ts,.js}'],
 });
