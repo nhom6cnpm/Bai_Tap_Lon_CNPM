@@ -7,6 +7,7 @@ import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { calculateUnitPrice } from './pricing';
 import { assertTransition, type OrderStatus } from './order-status';
+
 @Injectable()
   export class OrdersService {
   constructor(
