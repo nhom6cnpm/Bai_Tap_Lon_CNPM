@@ -81,6 +81,7 @@ import { assertTransition, type OrderStatus } from './order-status';
       status: savedOrder.status,
       createdAt: savedOrder.createdAt,
     };
+  }
 async findById(orderId: string): Promise<Order | null> {
     return this.orderRepository.findOne({
       where: { id: orderId },
@@ -93,8 +94,9 @@ async findById(orderId: string): Promise<Order | null> {
     if (!order) {
       throw new BadRequestException(`Đơn hàng ${orderId} không tồn tại`);
     }
+   assertTransition(order.status, status);
     order.status = status;
     return this.orderRepository.save(order);
   }
   }
-}
+
