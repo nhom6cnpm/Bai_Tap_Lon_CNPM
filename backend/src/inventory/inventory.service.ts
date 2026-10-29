@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Ingredient } from './ingredient.entity';
 import { RecipeItem } from './recipe-item.entity';
 import { ToppingRecipe } from './topping-recipe.entity';
+import { selectionAvailability } from './selection-availability';
 import {
   type IngredientAmounts,
   type OrderLine,
@@ -80,5 +81,14 @@ export class InventoryService {
     lines: readonly OrderLine[],
   ): Promise<IngredientAmounts> {
     return requiredForLines(await this.getRecipeBook(), lines);
+  }
+
+  /** Read-only preview; creating an order still needs an atomic stock check. */
+  async getAvailability(lines: readonly OrderLine[]) {
+    const [book, stock] = await Promise.all([
+      this.getRecipeBook(),
+      this.getStockMap(),
+    ]);
+    return selectionAvailability(book, stock, lines);
   }
 }

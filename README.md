@@ -2,7 +2,14 @@
 
 Ứng dụng đặt cà phê không dùng tiền mặt — Bài tập lớn môn Công nghệ Phần mềm, Trường Đại học Sài Gòn (HK I, 2026–2027).
 
+**Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
+— checklist, phạm vi đã chốt và bước tiếp theo.
+
 ## Công nghệ
+
+API và giao diện số ly còn bán theo size/topping:
+[hướng dẫn tích hợp](docs/selection-availability.md).
+
 | Thành phần | Công nghệ |
 |---|---|
 | Backend | NestJS (TypeScript), REST API |

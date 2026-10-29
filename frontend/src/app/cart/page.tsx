@@ -1,16 +1,21 @@
-'use client';
-import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCart, getLineKey, selectTotalPrice } from '@/store/useCart';
-import { useHydrated } from '@/hooks/useHydrated';
-import { formatPrice } from '@/lib/formatPrice';
-import { toppingOptions } from '@/lib/productOptions';
-import { getStoredToken } from '@/lib/auth';
-import { submitOrderApi } from '@/lib/orders/orders';
+"use client";
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useCart, getLineKey, selectTotalPrice } from "@/store/useCart";
+import { useHydrated } from "@/hooks/useHydrated";
+import { useAvailability } from "@/hooks/useAvailability";
+import { formatPrice } from "@/lib/formatPrice";
+import { toppingOptions } from "@/lib/productOptions";
+import { getStoredToken } from "@/lib/auth";
+import { submitOrderApi } from "@/lib/orders/orders";
 
 const toppingLabel = (ids: string[]) =>
-  ids.length ? ids.map((id) => toppingOptions.find((opt) => opt.id === id)?.name ?? id).join(', ') : 'Không topping';
+  ids.length
+    ? ids
+        .map((id) => toppingOptions.find((opt) => opt.id === id)?.name ?? id)
+        .join(", ")
+    : "Không topping";
 
 export default function CartPage() {
   const hydrated = useHydrated();
@@ -19,6 +24,7 @@ export default function CartPage() {
   const setQty = useCart((s) => s.setQty);
   const removeItem = useCart((s) => s.removeItem);
   const router = useRouter();
+  const availability = useAvailability(items, hydrated);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -30,12 +36,21 @@ export default function CartPage() {
 
     // Not logged in yet: go to login, then come back to the cart
     if (!getStoredToken()) {
-      router.push('/login?redirect=/cart');
+      router.push("/login?redirect=/cart");
       return;
     }
 
     setLoading(true);
     try {
+      const latest = await availability.refetch();
+      if (latest.isError || !latest.data) {
+        throw new Error("Không kiểm tra được số ly còn bán. Vui lòng thử lại.");
+      }
+      if (!latest.data.available) {
+        throw new Error(
+          "Giỏ hàng vượt số ly còn bán. Vui lòng giảm số lượng hoặc đổi lựa chọn.",
+        );
+      }
       const data = await submitOrderApi(items);
       useCart.getState().clear();
       setSuccessMessage(
@@ -43,7 +58,11 @@ export default function CartPage() {
       );
     } catch (err: unknown) {
       // Keep the cart unchanged so the user can try again
-      setErrorMessage(err instanceof Error ? err.message : 'Đã có lỗi xảy ra khi kết nối tới máy chủ.');
+      setErrorMessage(
+        err instanceof Error
+          ? err.message
+          : "Đã có lỗi xảy ra khi kết nối tới máy chủ.",
+      );
     } finally {
       setLoading(false);
     }
@@ -80,8 +99,9 @@ export default function CartPage() {
       {hydrated && items.length > 0 && (
         <>
           <ul className="space-y-3">
-            {items.map((item) => {
+            {items.map((item, index) => {
               const key = getLineKey(item);
+              const stock = availability.data?.items[index]?.stock;
               return (
                 <li
                   key={key}
@@ -100,9 +120,24 @@ export default function CartPage() {
                         <p className="text-sm text-stone-600">
                           Size {item.size} · {toppingLabel(item.toppingIds)}
                         </p>
-                        <p className="text-sm text-stone-500">{formatPrice(item.unitPrice)} / ly</p>
+                        <p className="text-sm text-stone-500">
+                          {formatPrice(item.unitPrice)} / ly
+                        </p>
+                        {availability.data &&
+                          !availability.isError &&
+                          stock !== undefined && (
+                            <p
+                              className={`mt-1 text-sm ${item.qty > stock ? "font-semibold text-red-700" : "text-stone-600"}`}
+                            >
+                              Chỉ còn {stock} ly theo lựa chọn này
+                              {item.qty > stock
+                                ? " — vui lòng giảm số lượng"
+                                : ""}
+                            </p>
+                          )}
                       </div>
                       <button
+                        disabled={loading}
                         onClick={() => removeItem(key)}
                         className="shrink-0 text-sm font-medium text-red-700 hover:underline"
                       >
@@ -114,17 +149,27 @@ export default function CartPage() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => setQty(key, item.qty - 1)}
-                          disabled={item.qty <= 1}
+                          disabled={loading || item.qty <= 1}
                           aria-label="Giảm số lượng"
                           className="h-8 w-8 rounded-full border border-stone-300 disabled:opacity-40"
                         >
                           −
                         </button>
-                        <span className="w-6 text-center font-medium">{item.qty}</span>
+                        <span className="w-6 text-center font-medium">
+                          {item.qty}
+                        </span>
                         <button
+                          disabled={
+                            loading ||
+                            availability.isPending ||
+                            availability.isFetching ||
+                            availability.isError ||
+                            stock === undefined ||
+                            item.qty >= Math.min(99, stock)
+                          }
                           onClick={() => setQty(key, item.qty + 1)}
                           aria-label="Tăng số lượng"
-                          className="h-8 w-8 rounded-full border border-stone-300"
+                          className="h-8 w-8 rounded-full border border-stone-300 disabled:opacity-40"
                         >
                           +
                         </button>
@@ -140,6 +185,29 @@ export default function CartPage() {
           </ul>
 
           <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-4">
+            <div role="status" className="mb-4 text-sm text-stone-600">
+              {availability.isPending
+                ? "Đang kiểm tra số ly còn bán…"
+                : availability.isError
+                  ? "Không kiểm tra được nguyên liệu. Vui lòng thử lại."
+                  : availability.data?.available
+                    ? "Đủ nguyên liệu theo lựa chọn hiện tại."
+                    : "Chưa đủ nguyên liệu cho toàn bộ giỏ hàng. Vui lòng điều chỉnh số lượng."}
+              <p className="mt-1">
+                Số ly của mỗi món đã tính phần nguyên liệu dành cho các món khác
+                trong giỏ.
+              </p>
+              {availability.isError && (
+                <button
+                  type="button"
+                  onClick={() => void availability.refetch()}
+                  disabled={availability.isFetching}
+                  className="mt-2 font-semibold underline"
+                >
+                  Thử kiểm tra lại
+                </button>
+              )}
+            </div>
             <div className="flex items-center justify-between text-lg font-bold">
               <span>Tổng tiền</span>
               <span className="text-amber-800">{formatPrice(total)}</span>
@@ -163,10 +231,16 @@ export default function CartPage() {
               </Link>
               <button
                 onClick={handleCheckout}
-                disabled={loading}
+                disabled={
+                  loading ||
+                  availability.isPending ||
+                  availability.isFetching ||
+                  availability.isError ||
+                  !availability.data?.available
+                }
                 className="flex-1 rounded-full bg-amber-700 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
               >
-                {loading ? 'Đang xử lý…' : 'Đặt hàng'}
+                {loading ? "Đang xử lý…" : "Đặt hàng"}
               </button>
             </div>
           </div>
