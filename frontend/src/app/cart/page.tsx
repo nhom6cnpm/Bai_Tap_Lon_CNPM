@@ -2,15 +2,20 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useCart, getLineKey, selectTotalPrice } from '@/store/useCart';
+import { useCart, getLineKey, selectTotalPrice, type CartItem } from '@/store/useCart';
 import { useHydrated } from '@/hooks/useHydrated';
 import { formatPrice } from '@/lib/formatPrice';
 import { toppingOptions } from '@/lib/productOptions';
 import { getStoredToken } from '@/lib/auth';
 import { submitOrderApi } from '@/lib/orders/orders';
+import { getActiveCheckout, saveCheckout } from '@/lib/payments/storage';
 
 const toppingLabel = (ids: string[]) =>
   ids.length ? ids.map((id) => toppingOptions.find((opt) => opt.id === id)?.name ?? id).join(', ') : 'Không topping';
+
+const cartFingerprint = (items: CartItem[]) => JSON.stringify(items
+  .map((item) => ({ key: getLineKey(item), qty: item.qty }))
+  .sort((left, right) => left.key.localeCompare(right.key)));
 
 export default function CartPage() {
   const hydrated = useHydrated();
@@ -22,11 +27,9 @@ export default function CartPage() {
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleCheckout = async () => {
     setErrorMessage(null);
-    setSuccessMessage(null);
 
     // Not logged in yet: go to login, then come back to the cart
     if (!getStoredToken()) {
@@ -34,13 +37,18 @@ export default function CartPage() {
       return;
     }
 
+    const fingerprint = cartFingerprint(items);
+    const activeOrder = getActiveCheckout(fingerprint);
+    if (activeOrder) {
+      router.push(`/checkout/${encodeURIComponent(activeOrder.orderId)}`);
+      return;
+    }
+
     setLoading(true);
     try {
       const data = await submitOrderApi(items);
-      useCart.getState().clear();
-      setSuccessMessage(
-        `Đặt hàng thành công! Mã đơn: ${data.orderId} · Tổng tiền: ${formatPrice(data.total)}`,
-      );
+      saveCheckout({ orderId: data.orderId, total: data.total, createdAt: data.createdAt, cartFingerprint: fingerprint });
+      router.push(`/checkout/${encodeURIComponent(data.orderId)}`);
     } catch (err: unknown) {
       // Keep the cart unchanged so the user can try again
       setErrorMessage(err instanceof Error ? err.message : 'Đã có lỗi xảy ra khi kết nối tới máy chủ.');
@@ -54,15 +62,6 @@ export default function CartPage() {
       <h1 className="mb-4 text-2xl font-bold">Giỏ hàng</h1>
 
       {!hydrated && <p className="text-stone-500">Đang tải giỏ hàng…</p>}
-
-      {successMessage && (
-        <div
-          role="status"
-          className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3 text-sm font-semibold text-green-700"
-        >
-          {successMessage}
-        </div>
-      )}
 
       {hydrated && items.length === 0 && (
         <div className="rounded-2xl border border-dashed border-stone-300 bg-white p-10 text-center">
@@ -166,7 +165,7 @@ export default function CartPage() {
                 disabled={loading}
                 className="flex-1 rounded-full bg-amber-700 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
               >
-                {loading ? 'Đang xử lý…' : 'Đặt hàng'}
+                {loading ? 'Đang tạo đơn…' : `Đặt hàng · ${formatPrice(total)}`}
               </button>
             </div>
           </div>
