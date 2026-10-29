@@ -5,33 +5,22 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import { OrdersService } from '../orders/orders.service';
-import { CreatePaymentDto, PaymentMethod } from './dto/create-payment.dto';
+import { CreatePaymentDto } from './dto/create-payment.dto';
 import { PaymentCallbackDto, PaymentResult } from './dto/payment-callback.dto';
-
-export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
-
-export interface Payment {
-  id: string;
-  orderId: string;
-  userId: string;
-  idempotencyKey: string;
-  amount: number;
-  method: PaymentMethod;
-  status: PaymentStatus;
-  gatewayUrl: string;
-  createdAt: Date;
-  updatedAt: Date;
-}
+import { Payment } from './entities/payment.entity';
 
 @Injectable()
 export class PaymentsService {
-  private payments: Payment[] = [];
-
   constructor(
+    @InjectRepository(Payment)
+    private readonly paymentRepository: Repository<Payment>,
     private readonly ordersService: OrdersService,
     private readonly configService: ConfigService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async createPayment(
@@ -59,9 +48,9 @@ export class PaymentsService {
       throw new BadRequestException('Đơn hàng đã hết hạn hoặc đã bị hủy');
     }
 
-    const existingPayment = this.payments.find(
-      (p) => p.idempotencyKey === idempotencyKey && p.orderId === dto.orderId,
-    );
+    const existingPayment = await this.paymentRepository.findOne({
+      where: { idempotencyKey, orderId: dto.orderId },
+    });
     if (existingPayment) {
       return {
         paymentId: existingPayment.id,
@@ -79,7 +68,7 @@ export class PaymentsService {
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
     const gatewayUrl = `${frontendUrl}/mock-gateway/${paymentId}`;
 
-    const newPayment: Payment = {
+    const newPayment = this.paymentRepository.create({
       id: paymentId,
       orderId: order.id,
       userId,
@@ -88,11 +77,9 @@ export class PaymentsService {
       method: dto.method,
       status: 'PENDING',
       gatewayUrl,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
+    });
 
-    this.payments.push(newPayment);
+    await this.paymentRepository.save(newPayment);
 
     return {
       paymentId: newPayment.id,
@@ -102,7 +89,7 @@ export class PaymentsService {
   }
 
   async getPaymentById(paymentId: string, userId?: string) {
-    const payment = this.payments.find((p) => p.id === paymentId);
+    const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
     if (!payment) {
       throw new NotFoundException(`Không tìm thấy phiên thanh toán ${paymentId}`);
     }
@@ -121,8 +108,8 @@ export class PaymentsService {
     };
   }
 
-  getPaymentForGateway(paymentId: string) {
-    const payment = this.payments.find((p) => p.id === paymentId);
+  async getPaymentForGateway(paymentId: string) {
+    const payment = await this.paymentRepository.findOne({ where: { id: paymentId } });
     if (!payment) {
       throw new NotFoundException(`Không tìm thấy phiên thanh toán ${paymentId}`);
     }
@@ -136,9 +123,10 @@ export class PaymentsService {
   }
 
   verifySignature(paymentId: string, result: PaymentResult, signature: string): boolean {
-    const secret =
-      this.configService.get<string>('PAYMENT_GATEWAY_SECRET') ||
-      'brewlite_mock_secret_key_sprint3';
+    const secret = this.configService.get<string>('PAYMENT_GATEWAY_SECRET');
+    if (!secret) {
+      throw new Error('PAYMENT_GATEWAY_SECRET chưa được cấu hình trong biến môi trường');
+    }
     const expected = crypto
       .createHmac('sha256', secret)
       .update(`${paymentId}:${result}`)
@@ -147,9 +135,10 @@ export class PaymentsService {
   }
 
   generateSignature(paymentId: string, result: PaymentResult): string {
-    const secret =
-      this.configService.get<string>('PAYMENT_GATEWAY_SECRET') ||
-      'brewlite_mock_secret_key_sprint3';
+    const secret = this.configService.get<string>('PAYMENT_GATEWAY_SECRET');
+    if (!secret) {
+      throw new Error('PAYMENT_GATEWAY_SECRET chưa được cấu hình trong biến môi trường');
+    }
     return crypto
       .createHmac('sha256', secret)
       .update(`${paymentId}:${result}`)
@@ -162,7 +151,7 @@ export class PaymentsService {
       throw new BadRequestException('Chữ ký không hợp lệ (Invalid signature)');
     }
 
-    const payment = this.payments.find((p) => p.id === dto.paymentId);
+    const payment = await this.paymentRepository.findOne({ where: { id: dto.paymentId } });
     if (!payment) {
       throw new NotFoundException(`Không tìm thấy phiên thanh toán ${dto.paymentId}`);
     }
@@ -175,20 +164,22 @@ export class PaymentsService {
       };
     }
 
-    payment.updatedAt = new Date();
-    if (dto.result === 'SUCCESS') {
-      payment.status = 'SUCCESS';
-      await this.ordersService.updateOrderStatus(payment.orderId, 'PAID');
-    } else {
-      payment.status = 'FAILED';
-      await this.ordersService.updateOrderStatus(payment.orderId, 'PAYMENT_FAILED');
-    }
+    const targetOrderStatus = dto.result === 'SUCCESS' ? 'PAID' : 'PAYMENT_FAILED';
+    const targetPaymentStatus = dto.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
+
+    await this.dataSource.transaction(async (manager) => {
+      payment.status = targetPaymentStatus;
+      payment.updatedAt = new Date();
+      await manager.save(payment);
+
+      await this.ordersService.updateOrderStatus(payment.orderId, targetOrderStatus as any);
+    });
 
     return {
       message: 'Xử lý callback thành công',
       paymentId: payment.id,
       status: payment.status,
-      orderStatus: dto.result === 'SUCCESS' ? 'PAID' : 'PAYMENT_FAILED',
+      orderStatus: targetOrderStatus,
     };
   }
 }
