@@ -39,3 +39,23 @@ Worktree gốc `Bai_Tap_Lon_CNPM` giữ nguyên lần merge dang dở và 13 đ�
 xung đột. Thay đổi mới nằm riêng tại `D:\Do_an_CNPM\BrewLite-availability`.
 Tiến độ lưu commit/cập nhật nền được theo dõi trong
 [checklist Task 9 và Task 10](task-9-10-plan.md).
+
+## Kiểm tra lại sau cập nhật main trong bước 1
+
+Ngày 29/10/2026: đã lưu tính năng trong `afe6c25`, ghép main mới `c12a42c`
+(backend thanh toán Task 8) bằng `269cf30`, sửa lỗi thụt dòng backend trong
+Docker Compose bằng `b15c913`.
+
+- Backend: lint, build qua; 108/108 test qua, 7 suite.
+- Frontend: lint, production build qua.
+- `docker compose -p brewlite-availability config --quiet`: qua sau khi sửa thụt dòng.
+- Postman JSON hợp lệ, giữ cả nhóm Products/Auth/Orders/Payments và request availability.
+- Đã format các file thay đổi trước khi commit.
+
+Sáu kịch bản trình duyệt ở bảng trên là kết quả giai đoạn kiểm tra tính năng ban đầu;
+lần cập nhật nền này chưa chạy lại trình duyệt, chưa rebuild/restart container hoặc
+chạy kiểm thử PostgreSQL/thanh toán end-to-end. Bước 2 và bước 6 tiếp tục kiểm tra
+nghiệp vụ giữ kho/thanh toán với DB thật.
+
+Đã tạo nhánh `feature/task-9-integration` từ main mới để triển khai Task 9 riêng.
+Bản cũ và metadata merge được sao lưu, kiểm tra hash không thay đổi (52 file).

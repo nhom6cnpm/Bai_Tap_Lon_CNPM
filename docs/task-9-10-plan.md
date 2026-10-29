@@ -16,17 +16,29 @@ Cập nhật dấu hoàn thành theo kết quả thực tế; không đánh dấ
   quy ước, chạy lint/format và kiểm thử; tạo PR, có ít nhất một người review trước
   khi merge; không push trực tiếp main hoặc commit bí mật/node_modules.
 
-## 1. Lưu công việc và chuẩn bị nền tích hợp — bước tiếp theo
+## 1. Lưu công việc và chuẩn bị nền tích hợp — đã hoàn thành
 
 - [x] Tạo nhánh `feature/task-10-selection-availability` từ nền main `759ad84`.
 - [x] Làm API và giao diện số ly theo size/topping, xét nguyên liệu dùng chung.
 - [x] Kiểm tra phần bổ sung: 96 test backend, 6 kịch bản trình duyệt;
       lint/build frontend và backend qua. [Chi tiết](selection-availability-validation.md).
-- [ ] Format/rà soát diff cuối, commit phần tồn kho và tài liệu liên quan.
-- [ ] Chuẩn bị các nhánh/thay đổi riêng cho task 9 và task 10, bảo toàn bản cũ đang
+- [x] Format/rà soát diff cuối, commit phần tồn kho và tài liệu liên quan (`afe6c25`).
+- [x] Chuẩn bị các nhánh/thay đổi riêng cho task 9 và task 10, bảo toàn bản cũ đang
       merge dang dở; dùng schema/migrations/auth hiện tại của nhóm khi tích hợp.
+- [x] Cập nhật nền main `c12a42c`, đã có backend Task 8; giữ cả request tồn kho
+      và thanh toán trong Postman. Sửa lỗi thụt dòng Docker Compose từ main.
+- [x] Sau cập nhật: 108/108 test backend qua, lint/build hai phần qua;
+      Docker Compose kiểm tra cấu hình hợp lệ. Chưa nghiệm thu DB/thanh toán end-to-end.
 
-## 2. Hoàn thiện Task 10c — tồn kho và thời hạn 5 phút
+Nhánh Task 10: `feature/task-10-selection-availability`, thư mục `BrewLite-availability`.
+Nhánh Task 9: `feature/task-9-integration`, thư mục `BrewLite-task9-integration`,
+đã có tài liệu ánh xạ schema/auth; chưa chuyển UI/API cũ sang.
+
+Bản cũ được sao lưu tại `.task9-recovery/task9-before-step1-20261029-224424.zip`
+trong workspace. Đã đối chiếu hash 47 file làm việc và 5 file metadata Git, tất cả
+giữ nguyên sau khi chuẩn bị nhánh. Chưa push hoặc merge vào main.
+
+## 2. Hoàn thiện Task 10c — tồn kho và thời hạn 5 phút — bước tiếp theo
 
 - [ ] Thống nhất với Tài/Bách thời hạn 5 phút và dữ liệu thời hạn dùng chung;
       Issue #18 còn ghi 15 phút, cần đồng bộ checkout/callback.
@@ -60,7 +72,8 @@ Xem [kết quả đối chiếu giao diện](task-9-ui-review.md).
 - [ ] Callback lặp không đổi trạng thái hoặc cộng điểm lần hai.
 - [ ] Kiểm tra transaction Payment/Order và tình huống hủy/hết hạn ở bước 2.
 
-Phối hợp thiết kế phần này ngay từ bước 2; hoàn thiện tích hợp khi code Task 8 sẵn sàng.
+Backend Task 8 đã có trong main `c12a42c`; dùng phần hiện có để rà soát và tích hợp.
+Phối hợp thiết kế từ bước 2, kiểm chứng với DB thật và giao diện thanh toán khi sẵn sàng.
 
 ## 5. Hoàn thiện Task 10e — giảm giá và điểm thưởng
 
@@ -91,5 +104,7 @@ Phối hợp thiết kế phần này ngay từ bước 2; hoàn thiện tích h
 
 - `D:\Do_an_CNPM\BrewLite-availability`: code nhóm + phần số ly mới và checklist này.
 - `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`: bản task 9 cũ, còn 13 đường dẫn xung đột merge.
+- `D:\Do_an_CNPM\BrewLite-task9-integration`: nhánh task 9 mới trên schema/auth của nhóm;
+  xem `docs/task-9-integration-plan.md` trong thư mục này.
 - `D:\Do_an_CNPM\BrewLite-task9-preview`: bản xem thử giao diện task 9 tại cổng 3100,
   dùng dữ liệu mẫu; không phải bản tích hợp thanh toán của nhóm.
