@@ -7,6 +7,9 @@ Nền làm việc Task 9: [kế hoạch tích hợp với schema và auth của 
 Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integration.md),
 [kết quả kiểm thử](docs/task-9-validation.md).
 
+Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`, nhánh
+`feature/task-9-integration`. [Ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
+
 **Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
 — checklist, phạm vi đã chốt và bước tiếp theo.
 

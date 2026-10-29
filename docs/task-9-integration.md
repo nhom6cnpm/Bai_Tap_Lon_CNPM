@@ -48,7 +48,7 @@ hiện tại vẫn khớp đơn đã thanh toán. Cache lịch sử và dữ li�
 ## Chạy và kiểm tra
 
 Chạy từ bản checkout của nhánh `feature/task-9-integration` (trên máy Ân là
-`D:\Do_an_CNPM\BrewLite-task9-integration`), chuẩn bị PostgreSQL và file môi trường như README,
+`D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`), chuẩn bị PostgreSQL và file môi trường như README,
 điền cả `JWT_SECRET` và `PAYMENT_GATEWAY_SECRET` trong `backend/.env`.
 Chạy backend/frontend hoặc `docker compose up -d --build` để dùng mã mới.
 Backend tự chạy migration khi khởi động. Cần sao lưu DB trước khi cập nhật bản nhóm.

@@ -31,12 +31,16 @@ Cập nhật dấu hoàn thành theo kết quả thực tế; không đánh dấ
       Docker Compose kiểm tra cấu hình hợp lệ. Chưa nghiệm thu DB/thanh toán end-to-end.
 
 Nhánh Task 10: `feature/task-10-selection-availability`, thư mục `BrewLite-availability`.
-Nhánh Task 9: `feature/task-9-integration`, thư mục `BrewLite-task9-integration`,
+Nhánh Task 9: `feature/task-9-integration`, thư mục chính `Bai_Tap_Lon_CNPM`,
 đã tích hợp UI/API theo schema/auth hiện tại và frontend Task 8 `702ff42`.
 
 Bản cũ được sao lưu tại `.task9-recovery/task9-before-step1-20261029-224424.zip`
 trong workspace. Đã đối chiếu hash 47 file làm việc và 5 file metadata Git, tất cả
 giữ nguyên sau khi chuẩn bị nhánh. Chưa push hoặc merge vào main.
+
+Ngày 30/10 đã sao lưu thêm 121 file (gồm cấu hình local), kết thúc lần merge cũ
+và chuyển thư mục chính sang nhánh tích hợp `4270997`. Không còn 13 file xung đột;
+nhánh Task 9 cũ và bản sao lưu vẫn còn. Xem [ghi nhận chuyển thư mục](workspace-recovery.md).
 
 ## 2. Hoàn thiện Task 10c — đã triển khai và kiểm thử backend
 
@@ -75,7 +79,8 @@ Backend có 108 unit/HTTP test và 37 e2e PostgreSQL qua; giao diện kiểm tra
 thẻ thất bại rồi thử lại cùng đơn, giới hạn xác nhận PAID và thời hạn backend.
 22/22 kiểm tra Playwright desktop/mobile qua; lint/build và build image Docker hai
 phần qua. Migration image backend chạy được trên database Docker test riêng.
-Chưa thay container 3000/3001 đang chạy. Nhánh Task 9 phụ thuộc nền Task 10c và
+Ngày 30/10 đã đưa code về thư mục chính và cập nhật container 3000/3001 sau sao lưu;
+đối chiếu dữ liệu và migration trên bản sao/DB thật đều qua. Nhánh Task 9 phụ thuộc nền Task 10c và
 frontend Task 8; cần review các phần phụ thuộc trước khi đưa lên main.
 
 Xem [kết quả đối chiếu giao diện](task-9-ui-review.md).
@@ -103,6 +108,10 @@ Phối hợp thiết kế từ bước 2, kiểm chứng với DB thật và gia
 
 ## 6. Kiểm thử tích hợp và bàn giao
 
+Đã hoàn tất việc thống nhất thư mục chính, cập nhật Docker và kiểm tra bảo toàn
+dữ liệu khi đưa Task 9/10c vào chạy. Checklist dưới đây là nghiệm thu cuối **cả
+Task 9 và Task 10c/d/e**, còn chờ hoàn thiện 10d/e.
+
 - [ ] Lint, format, build và các test cần thiết của cả hai task đều qua.
 - [ ] Chạy Docker cùng PostgreSQL thật; kiểm tra migration và bảo toàn dữ liệu.
 - [ ] Demo chọn món → giỏ → đăng nhập → tạo đơn → thanh toán → xác nhận → lịch sử.
@@ -121,8 +130,10 @@ Phối hợp thiết kế từ bước 2, kiểm chứng với DB thật và gia
 ## Vị trí làm việc
 
 - `D:\Do_an_CNPM\BrewLite-availability`: code nhóm + phần số ly mới và checklist này.
-- `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`: bản task 9 cũ, còn 13 đường dẫn xung đột merge.
-- `D:\Do_an_CNPM\BrewLite-task9-integration`: nhánh task 9 mới trên schema/auth của nhóm;
-  xem `docs/task-9-integration-plan.md` trong thư mục này.
+- `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`: thư mục làm việc chính, nhánh
+  `feature/task-9-integration`, đã chứa Task 9, nền Task 10c và frontend Task 8;
+  không còn xung đột merge.
+- `D:\Do_an_CNPM\BrewLite-task9-integration`: bản đối chiếu ở commit `4270997`
+  (detached HEAD); tiếp tục phát triển trong thư mục chính.
 - `D:\Do_an_CNPM\BrewLite-task9-preview`: bản xem thử giao diện task 9 tại cổng 3100,
   dùng dữ liệu mẫu; không phải bản tích hợp thanh toán của nhóm.

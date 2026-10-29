@@ -35,9 +35,14 @@ Xem [bản triển khai](task-9-integration.md) và [kết quả kiểm tra](tas
 
 ## Bảo toàn bản cũ
 
-Bản `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM` vẫn ở nhánh cũ với 13 đường dẫn xung đột;
-không abort/reset hoặc ghi đè khi tạo nhánh tích hợp. File đang thay đổi và metadata
-merge đã được sao lưu vào `D:\Do_an_CNPM\.task9-recovery` trước khi chuẩn bị nhánh.
-Giao diện mẫu cổng 3100 nằm trong worktree preview riêng, chưa phải bản tích hợp.
+Bản `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM` đã chuyển sang `feature/task-9-integration`
+ngày 30/10, không còn xung đột. Trước khi chuyển đã sao lưu và kiểm tra hash 121
+file, gồm code, metadata merge và cấu hình local; 52 file của bản sao lưu trước
+vẫn nguyên vẹn. Lần merge cũ được hủy sau sao lưu; nhánh cũ vẫn giữ commit `0efe6d5`.
+Không reset nhánh, xóa lịch sử hoặc ghi đè cấu hình local. Worktree
+`BrewLite-task9-integration` giữ commit `4270997` ở detached HEAD để đối chiếu.
+Giao diện mẫu cổng 3100 thuộc worktree preview riêng, không phải ứng dụng chính.
+
+Chi tiết: [đưa bản tích hợp về thư mục chính](workspace-recovery.md).
 
 Checklist chung ở `BrewLite-availability/docs/task-9-10-plan.md` trong cùng workspace.

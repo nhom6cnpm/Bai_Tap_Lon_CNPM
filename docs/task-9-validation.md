@@ -1,8 +1,10 @@
 # Kiểm tra Task 9 — 30/10/2026
 
 Nền: main `c12a42c`, Task 10c `65f588c`, frontend Task 8 `702ff42`.
-Các kiểm tra sử dụng database riêng; không reset DB `brewlite`, không thay các
-container backend/frontend đang chạy ở 3001/3000.
+Các kiểm thử tự động dùng database riêng, không reset DB `brewlite`.
+Sau khi đưa code về thư mục chính ngày 30/10, đã cập nhật hai container ứng dụng
+3001/3000 sau sao lưu và chạy thử migration trên bản sao dữ liệu. PostgreSQL và
+volume cũ được giữ nguyên; xem phần cập nhật Docker bên dưới.
 
 ## Backend
 
@@ -60,11 +62,38 @@ bao gồm TypeScript và production build của frontend. Khởi động Nest ap
 context từ image backend với `brewlite_task9_docker_test`: qua; đủ năm migration,
 gồm migration giữ nguyên liệu và snapshot tên/ảnh món.
 
-Chỉ build image và chạy container kiểm tra tạm; container 3000/3001 và DB đồ án
-chưa được chuyển sang bản này. Chưa chạy kiểm thử UI trên stack Docker đầy đủ.
+Lượt kiểm tra đầu chỉ build image và chạy container kiểm tra tạm.
 Build còn cảnh báo từ bộ dependency hiện có: Node 20 thấp hơn engine yêu cầu của
 một số gói backend, npm audit báo backend bốn mục và frontend production hai mục.
 Chưa nâng phiên bản dependency trong phạm vi Task 9; cần nhóm rà soát riêng trước triển khai công khai.
+
+### Cập nhật ứng dụng từ thư mục chính
+
+- Thư mục `Bai_Tap_Lon_CNPM` đã chuyển sang nhánh `feature/task-9-integration`;
+  không còn xung đột, code ứng dụng khớp bản đã kiểm thử `4270997`.
+- `npm ci` frontend đồng bộ theo lockfile: đủ `qrcode.react` và React Query đúng
+  phiên bản; frontend lint, backend build và build image hai phần qua.
+- Sao lưu DB `brewlite` bằng pg_dump custom format, kiểm tra archive và sao chép
+  ra workspace trước cập nhật. Khôi phục vào `brewlite_primary_migration_test`,
+  khởi động image mới để chạy đủ năm migration: qua.
+- So sánh số lượng và fingerprint dữ liệu trước/sau trên bản sao và DB đang dùng:
+  một user, sáu sản phẩm, chín nguyên liệu, một đơn và một dòng đơn đều được giữ.
+  Kiểm tra bao gồm thông tin tài khoản, toàn bộ dữ liệu nguyên liệu, giá/ID/người
+  sở hữu/thời điểm tạo đơn và lựa chọn/giá từng dòng. Tên/ảnh snapshot được bổ sung.
+- Đơn PENDING cũ đã quá hạn chuyển CANCELLED do PAYMENT_TIMEOUT theo worker;
+  không dựng lượng hoàn kho cho đơn cũ chưa từng có snapshot giữ nguyên liệu.
+- Cập nhật backend/frontend bằng Compose trong thư mục chính; giữ project local
+  `brewlite-availability` để tái sử dụng volume `brewlite-availability_pgdata`.
+  Không chạy down -v, không xóa container PostgreSQL hoặc reset DB.
+- HTTP menu/orders/cart/login ở 3000 và products ở 3001 trả 200; orders/me chưa
+  đăng nhập trả 401 đúng quyền. Trình duyệt desktop/mobile tải đủ sáu món và màn
+  yêu cầu đăng nhập của lịch sử, không lỗi JavaScript hoặc tràn ngang.
+- Chạy lại bốn kịch bản ví QR/thẻ thất bại rồi thử lại trên desktop/mobile từ
+  thư mục chính: 4/4 qua, không skip; dùng database UI test riêng.
+
+Ứng dụng thật: `http://localhost:3000/menu` và `http://localhost:3000/orders`.
+Đăng nhập lại nếu token cũ hết hiệu lực. Luồng tạo đơn/thanh toán vẫn kiểm thử
+trên DB riêng; chưa tạo tài khoản hoặc đơn thử mới vào DB đồ án.
 
 ## Phần chưa nghiệm thu toàn đồ án
 
