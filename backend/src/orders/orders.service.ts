@@ -69,7 +69,6 @@ export class OrdersService {
       item.order = order;
     });
 
-    // Save in transaction
     const savedOrder = await this.dataSource.transaction(async (manager) => {
       return manager.save(Order, order);
     });
