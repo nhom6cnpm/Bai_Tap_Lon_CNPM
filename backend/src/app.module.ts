@@ -38,6 +38,7 @@ import { Payment } from './payments/entities/payment.entity';
           ToppingRecipe,
           Payment,
         ],
+        // Migrations run automatically on app startup (also handles seed order)
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
         migrationsRun: true,
         synchronize: false,

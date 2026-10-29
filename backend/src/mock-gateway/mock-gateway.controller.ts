@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PaymentsService } from '../payments/payments.service';
-import { ConfirmMockDto } from './dto/confirm-mock.dto';
+import { ConfirmMockDto } from '../payments/dto/confirm-mock.dto';
 
 @Controller('mock-gateway')
 export class MockGatewayController {
@@ -31,7 +31,7 @@ export class MockGatewayController {
       throw new BadRequestException("result phải là 'SUCCESS' hoặc 'FAILED'");
     }
 
-    const payment = this.paymentsService.getPaymentForGateway(paymentId);
+    const payment = await this.paymentsService.getPaymentForGateway(paymentId);
     if (payment.status !== 'PENDING') {
       throw new BadRequestException(
         'Phiên thanh toán này không còn ở trạng thái PENDING',

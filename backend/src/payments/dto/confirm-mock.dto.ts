@@ -1,8 +1,7 @@
 import { IsIn } from 'class-validator';
-
-export type PaymentResult = 'SUCCESS' | 'FAILED';
+import type { PaymentResult } from './payment-callback.dto';
 
 export class ConfirmMockDto {
   @IsIn(['SUCCESS', 'FAILED'])
-  result: PaymentResult;
+  result!: PaymentResult;
 }
