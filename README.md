@@ -2,6 +2,8 @@
 
 Ứng dụng đặt cà phê không dùng tiền mặt — Bài tập lớn môn Công nghệ Phần mềm, Trường Đại học Sài Gòn (HK I, 2026–2027).
 
+Nền làm việc Task 9: [kế hoạch tích hợp với schema và auth của nhóm](docs/task-9-integration-plan.md).
+
 ## Công nghệ
 | Thành phần | Công nghệ |
 |---|---|
