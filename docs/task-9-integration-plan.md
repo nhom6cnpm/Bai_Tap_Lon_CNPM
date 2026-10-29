@@ -2,7 +2,9 @@
 
 Chuẩn bị ngày 29/10/2026, nhánh `feature/task-9-integration`, tách từ main
 `c12a42c` (đã có backend thanh toán Task 8). Commit `9616ee3` sửa thụt dòng
-dịch vụ backend trong Docker Compose. Chưa đưa giao diện/API Task 9 vào nhánh này.
+dịch vụ backend trong Docker Compose. Ngày 30/10 đã tích hợp API/giao diện Task 9,
+nền giữ kho Task 10c `65f588c` và frontend thanh toán Task 8 `702ff42`.
+Xem [bản triển khai](task-9-integration.md) và [kết quả kiểm tra](task-9-validation.md).
 
 ## Nền code dùng chung
 
@@ -16,7 +18,7 @@ dịch vụ backend trong Docker Compose. Chưa đưa giao diện/API Task 9 và
 | DB                 | TypeORM, migration trong `backend/src/migrations`; thay đổi schema dùng migration mới        |
 | Khung giao diện    | Header, Footer, QueryProvider, route menu/cart/login của nhóm                                |
 
-## Khi thực hiện bước tích hợp Task 9
+## Các nguyên tắc đã áp dụng khi tích hợp Task 9
 
 - Chuyển có chọn lọc nội dung lịch sử/chi tiết/xác nhận từ bản cũ `0efe6d5`;
   không đưa bộ entity/migration/auth cũ vào nền mới.

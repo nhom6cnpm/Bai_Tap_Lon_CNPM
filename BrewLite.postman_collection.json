@@ -1,6 +1,6 @@
 {
 	"info": {
-		"name": "BrewLite API - Task 2, 6, 7, 8 & 10 availability",
+		"name": "BrewLite API - Task 2, 6, 7, 8, 9 & 10 inventory",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"item": [
@@ -104,6 +104,28 @@
 		{
 			"name": "Orders",
 			"item": [
+				{
+					"name": "My Order History (JWT)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer <YOUR_JWT_TOKEN>" }
+						],
+						"url": "http://localhost:3001/orders/me",
+						"description": "Task 9: own orders, newest first; [] for no orders, 401 for invalid/deleted-user session. Includes item display/price snapshots, status, cancellation reason, expiresAt, serverTime, canPay and actual payment method. Cache-Control: private, no-store."
+					}
+				},
+				{
+					"name": "Own Order Detail (JWT)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{ "key": "Authorization", "value": "Bearer <YOUR_JWT_TOKEN>" }
+						],
+						"url": "http://localhost:3001/orders/<ORDER_ID>",
+						"description": "Task 9: the same DTO as one history entry. Unknown and another user's order both return 404. Confirmation UI must require PAID; canPay is true only for PENDING/PAYMENT_FAILED before the original backend expiry."
+					}
+				},
 				{
 					"name": "Cancel Own Order (Repeat Does Not Refund Twice)",
 					"request": {

@@ -1,5 +1,12 @@
 # Đối chiếu giao diện Task 9 — 29/10/2026
 
+**Cập nhật 30/10:** đã xử lý các khác biệt được liệt kê bên dưới trên nhánh
+`feature/task-9-integration`: dùng Header/Footer/auth chung, Arial và amber/stone,
+đủ trạng thái và hạn backend, tách chi tiết/xác nhận PAID. Kiểm tra desktop/mobile
+và luồng thanh toán thật bằng DB test đã qua. Xem [bản triển khai](task-9-integration.md)
+và [kết quả kiểm tra](task-9-validation.md). Phần còn lại của tài liệu là ghi nhận
+đối chiếu ban đầu ngày 29/10.
+
 ## Nguồn đã kiểm tra
 
 - PDF `BrewLite-CongNghePhanMem.pdf`, trang PDF 4–8: chức năng, wireframe,

@@ -19,6 +19,7 @@ export function useAvailability(
     enabled: enabled && items.length > 0,
     staleTime: 0,
     refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
     retry: false,
   });
 }

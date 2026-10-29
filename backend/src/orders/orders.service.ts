@@ -74,6 +74,8 @@ export class OrdersService {
             id: `${orderId}-${index + 1}`,
             orderId,
             productId: item.productId,
+            productName: product.name,
+            productImageUrl: product.imageUrl,
             size: item.size,
             toppingIds: item.toppingIds,
             qty: item.qty,

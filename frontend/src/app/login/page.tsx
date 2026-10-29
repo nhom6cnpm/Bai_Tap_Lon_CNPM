@@ -1,18 +1,19 @@
-'use client';
+"use client";
 
-import { Suspense, useState, FormEvent } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { Suspense, useState, FormEvent } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { safeRedirect } from "@/lib/safeRedirect";
 
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/menu';
+  const redirectUrl = safeRedirect(searchParams.get("redirect"));
 
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -28,7 +29,7 @@ function LoginForm() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('Có lỗi xảy ra khi đăng nhập. Vui lòng thử lại.');
+        setError("Có lỗi xảy ra khi đăng nhập. Vui lòng thử lại.");
       }
     } finally {
       setLoading(false);
@@ -38,7 +39,9 @@ function LoginForm() {
   return (
     <div className="w-full max-w-md rounded-2xl border border-stone-200 bg-white p-8 shadow-sm">
       <div className="mb-6 text-center">
-        <h1 className="text-2xl font-bold text-stone-900">Đăng nhập tài khoản</h1>
+        <h1 className="text-2xl font-bold text-stone-900">
+          Đăng nhập tài khoản
+        </h1>
         <p className="mt-1 text-sm text-stone-500">
           Đăng nhập để đặt đồ uống và tích luỹ điểm thưởng cùng BrewLite
         </p>
@@ -52,7 +55,10 @@ function LoginForm() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="email" className="block text-sm font-medium text-stone-700">
+          <label
+            htmlFor="email"
+            className="block text-sm font-medium text-stone-700"
+          >
             Email
           </label>
           <input
@@ -68,7 +74,10 @@ function LoginForm() {
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-stone-700">
+          <label
+            htmlFor="password"
+            className="block text-sm font-medium text-stone-700"
+          >
             Mật khẩu
           </label>
           <input
@@ -88,14 +97,14 @@ function LoginForm() {
           disabled={loading}
           className="w-full rounded-xl bg-amber-800 py-2.5 text-center text-sm font-medium text-white transition hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+          {loading ? "Đang đăng nhập..." : "Đăng nhập"}
         </button>
       </form>
 
       <div className="mt-6 text-center text-sm text-stone-600">
-        Chưa có tài khoản?{' '}
+        Chưa có tài khoản?{" "}
         <Link
-          href={`/register${redirectUrl !== '/menu' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
+          href={`/register${redirectUrl !== "/menu" ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
           className="font-semibold text-amber-800 hover:underline"
         >
           Đăng ký ngay
@@ -108,7 +117,9 @@ function LoginForm() {
 export default function LoginPage() {
   return (
     <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-4 py-12">
-      <Suspense fallback={<div className="text-center text-stone-500">Đang tải...</div>}>
+      <Suspense
+        fallback={<div className="text-center text-stone-500">Đang tải...</div>}
+      >
         <LoginForm />
       </Suspense>
     </div>

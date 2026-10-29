@@ -17,6 +17,12 @@ export class OrderItem {
   @Column({ type: 'varchar', length: 64 })
   productId!: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  productName!: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  productImageUrl!: string | null;
+
   @Column({ type: 'varchar', length: 10 })
   size!: ProductSize;
 

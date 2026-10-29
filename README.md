@@ -4,6 +4,9 @@
 
 Nền làm việc Task 9: [kế hoạch tích hợp với schema và auth của nhóm](docs/task-9-integration-plan.md).
 
+Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integration.md),
+[kết quả kiểm thử](docs/task-9-validation.md).
+
 **Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
 — checklist, phạm vi đã chốt và bước tiếp theo.
 
@@ -69,7 +72,7 @@ NEXT_PUBLIC_APP_URL=http://<IP-máy-tính>:3000
 
 Trên Windows, chạy `ipconfig` để xem IPv4 của Wi-Fi. Trên macOS, chạy `ipconfig getifaddr en0` (thay `en0` bằng tên giao diện Wi-Fi nếu máy dùng tên khác). Sau khi đặt biến này hoặc khi địa chỉ IP thay đổi, chạy `docker compose up -d --build frontend` để build lại frontend, rồi tải lại trang thanh toán. QR sẽ mở trang xác nhận BrewLite Pay giả lập trên điện thoại; đây không phải giao dịch ngân hàng thật. File `.env` được Git bỏ qua.
 
-Giao diện mặc định cho thanh toán trong 5 phút. Khi cần đổi thời hạn cho bản Docker, thêm `ORDER_PAYMENT_TIMEOUT_MINUTES=5` (hoặc số phút mong muốn) vào file `.env` ở thư mục gốc rồi build lại. Compose truyền cùng một giá trị cho backend và frontend; backend sẽ dùng giá trị này khi chức năng tự hủy đơn của Task 10c được triển khai.
+Task 10c giữ nguyên liệu trong **5 phút từ khi tạo đơn** rồi tự hủy và hoàn kho nếu chưa thanh toán. Checkout và QR hiển thị `expiresAt` theo đồng hồ backend; thử lại không gia hạn. Biến timeout frontend của Task 8 chỉ giới hạn thời gian tự kiểm tra, không thay đổi hạn đơn trên backend.
 
 Dừng và dọn dẹp container:
 ```bash
@@ -94,7 +97,7 @@ docker run -d --name brewlite-postgres -p 5432:5432 -e POSTGRES_USER=brewlite -e
 ```bash
 cd backend
 cp .env.example .env
-# Điền JWT_SECRET vào .env
+# Điền cả JWT_SECRET và PAYMENT_GATEWAY_SECRET vào .env
 npm install
 npm run start:dev
 ```

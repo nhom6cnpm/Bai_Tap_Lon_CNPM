@@ -1,6 +1,6 @@
 # Thứ tự thực hiện Task 9 và Task 10c/d/e
 
-Cập nhật: 29/10/2026. Đây là checklist theo dõi công việc đã thống nhất với Ân.
+Cập nhật: 30/10/2026. Đây là checklist theo dõi công việc đã thống nhất với Ân.
 Cập nhật dấu hoàn thành theo kết quả thực tế; không đánh dấu xong chỉ vì đã có demo.
 
 ## Phạm vi đã chốt
@@ -32,7 +32,7 @@ Cập nhật dấu hoàn thành theo kết quả thực tế; không đánh dấ
 
 Nhánh Task 10: `feature/task-10-selection-availability`, thư mục `BrewLite-availability`.
 Nhánh Task 9: `feature/task-9-integration`, thư mục `BrewLite-task9-integration`,
-đã có tài liệu ánh xạ schema/auth; chưa chuyển UI/API cũ sang.
+đã tích hợp UI/API theo schema/auth hiện tại và frontend Task 8 `702ff42`.
 
 Bản cũ được sao lưu tại `.task9-recovery/task9-before-step1-20261029-224424.zip`
 trong workspace. Đã đối chiếu hash 47 file làm việc và 5 file metadata Git, tất cả
@@ -56,22 +56,34 @@ giữ nguyên sau khi chuẩn bị nhánh. Chưa push hoặc merge vào main.
 
 Chi tiết: [Task 10c — API, migration và kiểm thử](task-10c-inventory.md).
 
-## 3. Hoàn thiện Task 9 và đồng bộ giao diện — bước tiếp theo
+## 3. Hoàn thiện Task 9 và đồng bộ giao diện — đã triển khai và kiểm thử
 
-- [ ] Ghép phần task 9 cũ vào nền code nhóm, dùng chung auth và schema đơn hàng.
-- [ ] GET /orders/me và /orders/:id có JWT; chỉ truy cập đơn của mình;
+- [x] Ghép phần task 9 vào nền code nhóm, dùng chung auth và schema đơn hàng.
+- [x] GET /orders/me và /orders/:id có JWT; chỉ truy cập đơn của mình;
       mới nhất trước; đơn người khác trả 404.
-- [ ] Dùng Header/Footer và trạng thái tài khoản/giỏ chung; thêm link Đơn hàng
+- [x] Dùng Header/Footer và trạng thái tài khoản/giỏ chung; thêm link Đơn hàng
       khi đăng nhập; đồng bộ font, màu, nút và khoảng cách với các trang trước.
-- [ ] Hiển thị đủ trạng thái, gồm PAYMENT_FAILED và lý do hủy do quá hạn;
+- [x] Hiển thị đủ trạng thái, gồm PAYMENT_FAILED và lý do hủy do quá hạn;
       có loading/empty/error/retry.
-- [ ] Nút Thanh toán cho PENDING/PAYMENT_FAILED còn hạn dẫn tới cùng đơn;
+- [x] Nút Thanh toán cho PENDING/PAYMENT_FAILED còn hạn dẫn tới cùng đơn;
       màn xác nhận theo yêu cầu PAID; không bổ sung chức năng Đặt lại.
-- [ ] Kiểm tra desktop/mobile và toàn bộ trạng thái với dữ liệu kiểm thử.
+- [x] Kiểm tra desktop/mobile và toàn bộ trạng thái với dữ liệu kiểm thử.
+
+Xem [bản triển khai và cách chạy](task-9-integration.md),
+[kết quả kiểm thử](task-9-validation.md) trong worktree Task 9.
+Backend có 108 unit/HTTP test và 37 e2e PostgreSQL qua; giao diện kiểm tra cả ví QR,
+thẻ thất bại rồi thử lại cùng đơn, giới hạn xác nhận PAID và thời hạn backend.
+22/22 kiểm tra Playwright desktop/mobile qua; lint/build và build image Docker hai
+phần qua. Migration image backend chạy được trên database Docker test riêng.
+Chưa thay container 3000/3001 đang chạy. Nhánh Task 9 phụ thuộc nền Task 10c và
+frontend Task 8; cần review các phần phụ thuộc trước khi đưa lên main.
 
 Xem [kết quả đối chiếu giao diện](task-9-ui-review.md).
 
 ## 4. Tích hợp Task 10d với Task 8
+
+**Bước tiếp theo:** rà soát tiêu chí Task 10d trên nền Payment/transaction đang có;
+không tạo module thanh toán thứ hai. Task 10e vẫn cần nhóm chốt quy tắc nghiệp vụ.
 
 - [ ] Thống nhất phạm vi với Tài, dùng chung phần Payment/idempotency/callback.
 - [ ] Cùng Idempotency-Key, kể cả gửi đồng thời, chỉ tạo một Payment.

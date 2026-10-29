@@ -150,6 +150,11 @@ export class PaymentsService {
       );
     }
 
+    const order = await this.ordersService.findById(payment.orderId);
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    const serverTime = await this.ordersService.databaseNow(
+      this.dataSource.manager,
+    );
     return {
       paymentId: payment.id,
       orderId: payment.orderId,
@@ -157,6 +162,9 @@ export class PaymentsService {
       amount: payment.amount,
       method: payment.method,
       gatewayUrl: payment.gatewayUrl,
+      expiresAt: order.expiresAt,
+      orderStatus: order.status,
+      serverTime,
     };
   }
 
@@ -167,12 +175,20 @@ export class PaymentsService {
         `Không tìm thấy phiên thanh toán ${paymentId}`,
       );
     }
+    const order = await this.ordersService.findById(payment.orderId);
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    const serverTime = await this.ordersService.databaseNow(
+      this.dataSource.manager,
+    );
     return {
       paymentId: payment.id,
       orderId: payment.orderId,
       amount: payment.amount,
       method: payment.method,
       status: payment.status,
+      expiresAt: order.expiresAt,
+      orderStatus: order.status,
+      serverTime,
     };
   }
 

@@ -14,6 +14,7 @@ import { InitialSchema1761580800000 } from '../src/migrations/1761580800000-Init
 import { AddInventory1761650000000 } from '../src/migrations/1761650000000-AddInventory';
 import { AddPayments1761750000000 } from '../src/migrations/1761750000000-AddPayments';
 import { OrderInventoryReservations1761830000000 } from '../src/migrations/1761830000000-OrderInventoryReservations';
+import { OrderItemDisplaySnapshot1761840000000 } from '../src/migrations/1761840000000-OrderItemDisplaySnapshot';
 import { OrderExpiryService } from '../src/orders/order-expiry.service';
 import { OrderInventoryReservation } from '../src/orders/order-inventory-reservation.entity';
 import { OrderItem } from '../src/orders/order-item.entity';
@@ -95,6 +96,7 @@ describeDatabase(
           AddInventory1761650000000,
           AddPayments1761750000000,
           OrderInventoryReservations1761830000000,
+          OrderItemDisplaySnapshot1761840000000,
         ],
         synchronize: false,
         logging: false,
@@ -454,6 +456,7 @@ describeDatabase(
 
     it('preserves legacy rows through down/up migration and never refunds stock that was not deducted', async () => {
       await database.undoLastMigration();
+      await database.undoLastMigration();
       await database.query(
         `INSERT INTO orders (id, "userId", status, total, "createdAt")
       VALUES ('LEGACY-EXPIRED', $1, 'PENDING', 35000, CURRENT_TIMESTAMP - INTERVAL '10 minutes')`,
@@ -525,6 +528,233 @@ describeDatabase(
         );
         await database.query('DROP FUNCTION task10_fail_reservation()');
       }
+    });
+
+    describe('Task 9 own-order history and details', () => {
+      const history = () =>
+        request(app.getHttpServer())
+          .get('/orders/me')
+          .set('Authorization', `Bearer ${token}`);
+      const detail = (id: string) =>
+        request(app.getHttpServer())
+          .get(`/orders/${id}`)
+          .set('Authorization', `Bearer ${token}`);
+
+      it('requires JWT for both read endpoints', async () => {
+        await request(app.getHttpServer()).get('/orders/me').expect(401);
+        await request(app.getHttpServer()).get('/orders/unknown').expect(401);
+      });
+
+      it('returns an empty array for a user without orders and disables shared caching', async () => {
+        const response = await history().expect(200);
+        expect(response.body).toEqual([]);
+        expect(response.headers['cache-control']).toBe('private, no-store');
+      });
+
+      it('returns only own orders with newest first and deterministic ordering for ties', async () => {
+        const first = await create();
+        const second = await create();
+        const other = await database
+          .getRepository(User)
+          .save({ email: 'other@history.test', passwordHash: 'unused' });
+        await orders.createOrder(other.id, { items: [item()] });
+        const sameTime = new Date();
+        await database
+          .getRepository(Order)
+          .update({ id: first.orderId }, { createdAt: sameTime });
+        await database
+          .getRepository(Order)
+          .update({ id: second.orderId }, { createdAt: sameTime });
+        const response = await history().expect(200);
+        expect(response.body.map((entry: { id: string }) => entry.id)).toEqual(
+          [first.orderId, second.orderId].sort().reverse(),
+        );
+        const entry = response.body[0];
+        expect(entry.items[0].name).toBe('Cà phê sữa');
+        expect(entry).not.toHaveProperty('userId');
+        expect(entry).not.toHaveProperty('inventoryReservedAt');
+        expect(entry).not.toHaveProperty('gatewaySecret');
+      });
+
+      it('returns the correct detail with stored prices, items, deadline and backend clock', async () => {
+        const created = await create([
+          item({ size: 'M', toppingIds: ['cream'], qty: 2 }),
+        ]);
+        const response = await detail(created.orderId).expect(200);
+        expect(response.body.id).toBe(created.orderId);
+        expect(response.body.total).toBe(90000);
+        expect(response.body.items[0]).toMatchObject({
+          name: 'Cà phê sữa',
+          size: 'M',
+          qty: 2,
+          unitPrice: 45000,
+          lineTotal: 90000,
+          toppingIds: ['cream'],
+        });
+        expect(
+          Date.parse(response.body.expiresAt) -
+            Date.parse(response.body.createdAt),
+        ).toBe(300000);
+        expect(Number.isFinite(Date.parse(response.body.serverTime))).toBe(
+          true,
+        );
+        expect(response.body.canPay).toBe(true);
+      });
+
+      it('does not reveal whether an inaccessible order belongs to another account', async () => {
+        const other = await database
+          .getRepository(User)
+          .save({ email: 'private@history.test', passwordHash: 'unused' });
+        const hidden = await orders.createOrder(other.id, { items: [item()] });
+        const foreign = await detail(hidden.orderId).expect(404);
+        const missing = await detail('ORD-missing').expect(404);
+        expect(foreign.body.message).toBe(missing.body.message);
+      });
+
+      it('rejects expired tokens', async () => {
+        const expiredToken = app
+          .get(JwtService)
+          .sign(
+            { sub: userId, email: 'expired@history.test' },
+            { expiresIn: -1 },
+          );
+        await request(app.getHttpServer())
+          .get('/orders/me')
+          .set('Authorization', `Bearer ${expiredToken}`)
+          .expect(401);
+      });
+
+      it('rejects a deleted account even when its old JWT signature is valid', async () => {
+        await database.getRepository(User).delete({ id: userId });
+        await history().expect(401);
+      });
+
+      it('rejects malformed subjects without sending invalid UUIDs to PostgreSQL', async () => {
+        const malformed = app
+          .get(JwtService)
+          .sign({ sub: 'invalid-subject', email: 'bad@history.test' });
+        await request(app.getHttpServer())
+          .get('/orders/me')
+          .set('Authorization', `Bearer ${malformed}`)
+          .expect(401);
+      });
+
+      it('keeps the purchased name, image and price when the menu changes', async () => {
+        const created = await create();
+        await database.getRepository(Product).update(
+          { id: '1' },
+          {
+            name: 'Renamed drink',
+            price: 999999,
+            imageUrl: '/images/americano.jpg',
+          },
+        );
+        try {
+          const response = await detail(created.orderId).expect(200);
+          expect(response.body.items[0]).toMatchObject({
+            name: 'Cà phê sữa',
+            imageUrl: '/images/coffee.jpg',
+            unitPrice: 35000,
+            lineTotal: 35000,
+          });
+          expect(response.body.total).toBe(35000);
+        } finally {
+          await database.getRepository(Product).update(
+            { id: '1' },
+            {
+              name: 'Cà phê sữa',
+              price: 35000,
+              imageUrl: '/images/coffee.jpg',
+            },
+          );
+        }
+      });
+
+      it('includes all seven statuses and only permits payment for live unpaid orders', async () => {
+        const statuses = [
+          'PENDING',
+          'PAYMENT_FAILED',
+          'PAID',
+          'PREPARING',
+          'READY',
+          'COMPLETED',
+          'CANCELLED',
+        ] as const;
+        for (const status of statuses) {
+          const created = await create();
+          await database
+            .getRepository(Order)
+            .update({ id: created.orderId }, { status });
+        }
+        const response = await history().expect(200);
+        expect(response.body).toHaveLength(7);
+        for (const entry of response.body as {
+          status: string;
+          canPay: boolean;
+        }[]) {
+          expect(entry.canPay).toBe(
+            ['PENDING', 'PAYMENT_FAILED'].includes(entry.status),
+          );
+        }
+      });
+
+      it('hides the pay action at the exact expiry even before the background worker scans', async () => {
+        const created = await create();
+        await expire(created.orderId);
+        const response = await detail(created.orderId).expect(200);
+        expect(response.body.status).toBe('PENDING');
+        expect(response.body.canPay).toBe(false);
+      });
+
+      it('exposes timeout cancellation reasons and the real successful payment method', async () => {
+        const unpaid = await create();
+        await expire(unpaid.orderId);
+        await orders.expireUnpaidOrders();
+        const cancelled = await detail(unpaid.orderId).expect(200);
+        expect(cancelled.body).toMatchObject({
+          status: 'CANCELLED',
+          cancelReason: 'PAYMENT_TIMEOUT',
+          canPay: false,
+        });
+        expect(cancelled.body.cancelledAt).toBeDefined();
+        const paid = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: paid.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await callback(payment.paymentId);
+        const response = await detail(paid.orderId).expect(200);
+        expect(response.body).toMatchObject({
+          status: 'PAID',
+          paymentMethod: 'WALLET',
+          canPay: false,
+        });
+        const paymentResponse = await request(app.getHttpServer())
+          .get(`/payments/${payment.paymentId}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(paymentResponse.body.expiresAt).toBe(response.body.expiresAt);
+        expect(paymentResponse.body.orderStatus).toBe('PAID');
+      });
+
+      it('backfills legacy item display fields without recalculating historical money', async () => {
+        await database.undoLastMigration();
+        await database.query(
+          `INSERT INTO orders (id, "userId", status, total) VALUES ('LEGACY-HISTORY', $1, 'COMPLETED', 12345)`,
+          [userId],
+        );
+        await database.query(`INSERT INTO order_items (id, "orderId", "productId", size, "toppingIds", qty, "unitPrice", "lineTotal")
+          VALUES ('legacy-history-item', 'LEGACY-HISTORY', '1', 'S', '[]', 1, 12345, 12345)`);
+        await database.runMigrations();
+        const response = await detail('LEGACY-HISTORY').expect(200);
+        expect(response.body.items[0]).toMatchObject({
+          name: 'Cà phê sữa',
+          imageUrl: '/images/coffee.jpg',
+          unitPrice: 12345,
+        });
+        expect(response.body.total).toBe(12345);
+      });
     });
 
     it('exposes authenticated create/cancel APIs and hides orders owned by another account', async () => {

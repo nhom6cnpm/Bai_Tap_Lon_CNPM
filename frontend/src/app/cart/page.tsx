@@ -1,15 +1,23 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCart, getLineKey, selectTotalPrice, type CartItem } from "@/store/useCart";
+import { useCart, getLineKey, selectTotalPrice } from "@/store/useCart";
 import { useHydrated } from "@/hooks/useHydrated";
 import { useAvailability } from "@/hooks/useAvailability";
 import { formatPrice } from "@/lib/formatPrice";
 import { toppingOptions } from "@/lib/productOptions";
 import { getStoredToken } from "@/lib/auth";
 import { submitOrderApi } from "@/lib/orders/orders";
-import { getActiveCheckout, saveCheckout } from '@/lib/payments/storage';
+import {
+  clearActiveCheckout,
+  getActiveCheckout,
+  getCartFingerprint,
+  saveCheckout,
+} from "@/lib/payments/storage";
+import { useOwnOrder, useOrderClock } from "@/hooks/useOrderHistory";
+import { getMyOrder, OrderApiError } from "@/lib/orders/history";
+import { canPay, isPaid } from "@/lib/orderUtils";
 
 const toppingLabel = (ids: string[]) =>
   ids.length
@@ -17,10 +25,6 @@ const toppingLabel = (ids: string[]) =>
         .map((id) => toppingOptions.find((opt) => opt.id === id)?.name ?? id)
         .join(", ")
     : "Không topping";
-
-const cartFingerprint = (items: CartItem[]) => JSON.stringify(items
-  .map((item) => ({ key: getLineKey(item), qty: item.qty }))
-  .sort((left, right) => left.key.localeCompare(right.key)));
 
 export default function CartPage() {
   const hydrated = useHydrated();
@@ -30,11 +34,26 @@ export default function CartPage() {
   const removeItem = useCart((s) => s.removeItem);
   const router = useRouter();
   const availability = useAvailability(items, hydrated);
+  const candidate =
+    hydrated && items.length
+      ? getActiveCheckout(getCartFingerprint(items))
+      : null;
+  const activeOrder = useOwnOrder(candidate?.orderId ?? "");
+  const now = useOrderClock(
+    activeOrder.data?.serverTime,
+    activeOrder.dataUpdatedAt,
+  );
+  const resume =
+    !!candidate &&
+    !!activeOrder.data &&
+    (canPay(activeOrder.data, now) || isPaid(activeOrder.data.status));
+  const requestInFlight = useRef(false);
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleCheckout = async () => {
+    if (requestInFlight.current) return;
     setErrorMessage(null);
 
     // Not logged in yet: go to login, then come back to the cart
@@ -43,15 +62,32 @@ export default function CartPage() {
       return;
     }
 
-    const fingerprint = cartFingerprint(items);
-    const activeOrder = getActiveCheckout(fingerprint);
-    if (activeOrder) {
-      router.push(`/checkout/${encodeURIComponent(activeOrder.orderId)}`);
-      return;
-    }
-
+    const fingerprint = getCartFingerprint(items);
+    requestInFlight.current = true;
     setLoading(true);
     try {
+      if (candidate) {
+        try {
+          const current = await getMyOrder(candidate.orderId);
+          if (current.canPay) {
+            router.push(`/checkout/${encodeURIComponent(current.id)}`);
+            return;
+          }
+          if (isPaid(current.status)) {
+            useCart.getState().clear();
+            clearActiveCheckout(current.id);
+            router.push(
+              `/orders/${encodeURIComponent(current.id)}${current.status === "PAID" ? "/confirmation" : ""}`,
+            );
+            return;
+          }
+          clearActiveCheckout(candidate.orderId);
+        } catch (cause) {
+          if (cause instanceof OrderApiError && cause.status === 404)
+            clearActiveCheckout(candidate.orderId);
+          else throw cause;
+        }
+      }
       const latest = await availability.refetch();
       if (latest.isError || !latest.data) {
         throw new Error("Không kiểm tra được số ly còn bán. Vui lòng thử lại.");
@@ -62,7 +98,13 @@ export default function CartPage() {
         );
       }
       const data = await submitOrderApi(items);
-      saveCheckout({ orderId: data.orderId, total: data.total, createdAt: data.createdAt, expiresAt: data.expiresAt, cartFingerprint: fingerprint });
+      saveCheckout({
+        orderId: data.orderId,
+        total: data.total,
+        createdAt: data.createdAt,
+        expiresAt: data.expiresAt,
+        cartFingerprint: fingerprint,
+      });
       router.push(`/checkout/${encodeURIComponent(data.orderId)}`);
     } catch (err: unknown) {
       // Keep the cart unchanged so the user can try again
@@ -72,6 +114,7 @@ export default function CartPage() {
           : "Đã có lỗi xảy ra khi kết nối tới máy chủ.",
       );
     } finally {
+      requestInFlight.current = false;
       setLoading(false);
     }
   };
@@ -122,7 +165,8 @@ export default function CartPage() {
                         <p className="text-sm text-stone-500">
                           {formatPrice(item.unitPrice)} / ly
                         </p>
-                        {availability.data &&
+                        {!resume &&
+                          availability.data &&
                           !availability.isError &&
                           stock !== undefined && (
                             <p
@@ -185,18 +229,22 @@ export default function CartPage() {
 
           <div className="mt-6 rounded-2xl border border-stone-200 bg-white p-4">
             <div role="status" className="mb-4 text-sm text-stone-600">
-              {availability.isPending
-                ? "Đang kiểm tra số ly còn bán…"
-                : availability.isError
-                  ? "Không kiểm tra được nguyên liệu. Vui lòng thử lại."
-                  : availability.data?.available
-                    ? "Đủ nguyên liệu theo lựa chọn hiện tại."
-                    : "Chưa đủ nguyên liệu cho toàn bộ giỏ hàng. Vui lòng điều chỉnh số lượng."}
-              <p className="mt-1">
-                Số ly của mỗi món đã tính phần nguyên liệu dành cho các món khác
-                trong giỏ.
-              </p>
-              {availability.isError && (
+              {resume
+                ? "Bạn có đơn hàng cho giỏ này. Tiếp tục để kiểm tra và thanh toán."
+                : availability.isPending
+                  ? "Đang kiểm tra số ly còn bán…"
+                  : availability.isError
+                    ? "Không kiểm tra được nguyên liệu. Vui lòng thử lại."
+                    : availability.data?.available
+                      ? "Đủ nguyên liệu theo lựa chọn hiện tại."
+                      : "Chưa đủ nguyên liệu cho toàn bộ giỏ hàng. Vui lòng điều chỉnh số lượng."}
+              {!resume && (
+                <p className="mt-1">
+                  Số ly của mỗi món đã tính phần nguyên liệu dành cho các món
+                  khác trong giỏ.
+                </p>
+              )}
+              {!resume && availability.isError && (
                 <button
                   type="button"
                   onClick={() => void availability.refetch()}
@@ -232,14 +280,20 @@ export default function CartPage() {
                 onClick={handleCheckout}
                 disabled={
                   loading ||
-                  availability.isPending ||
-                  availability.isFetching ||
-                  availability.isError ||
-                  !availability.data?.available
+                  (!!candidate && activeOrder.isPending) ||
+                  (!resume &&
+                    (availability.isPending ||
+                      availability.isFetching ||
+                      availability.isError ||
+                      !availability.data?.available))
                 }
                 className="flex-1 rounded-full bg-amber-700 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
               >
-                {loading ? 'Đang tạo đơn…' : `Đặt hàng · ${formatPrice(total)}`}
+                {loading
+                  ? "Đang xử lý…"
+                  : resume
+                    ? "Tiếp tục đơn hàng"
+                    : `Đặt hàng · ${formatPrice(total)}`}
               </button>
             </div>
           </div>
