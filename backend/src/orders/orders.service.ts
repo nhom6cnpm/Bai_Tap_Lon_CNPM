@@ -6,9 +6,8 @@ import { ProductsService } from '../products/products.service';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { calculateUnitPrice } from './pricing';
-
+import { assertTransition, type OrderStatus } from './order-status';
 @Injectable()
-export type OrderStatus = 'PENDING' | 'PAID' | 'PAYMENT_FAILED' | 'CANCELLED';
   export class OrdersService {
   constructor(
     @InjectRepository(Order)
