@@ -59,6 +59,18 @@ Kiểm tra:
 - **API danh sách sản phẩm**: http://localhost:3001/products
 - **PostgreSQL**: `localhost:5432` (user/pass/db: `brewlite`)
 
+### Quét QR thanh toán bằng điện thoại khi chạy Docker
+
+Điện thoại và máy tính phải cùng mạng Wi-Fi. Ở **thư mục gốc của repo** (cùng cấp với `docker-compose.yml`), tạo file `.env` và điền địa chỉ IPv4 của máy tính:
+
+```env
+NEXT_PUBLIC_APP_URL=http://<IP-máy-tính>:3000
+```
+
+Trên Windows, chạy `ipconfig` để xem IPv4 của Wi-Fi. Trên macOS, chạy `ipconfig getifaddr en0` (thay `en0` bằng tên giao diện Wi-Fi nếu máy dùng tên khác). Sau khi đặt biến này hoặc khi địa chỉ IP thay đổi, chạy `docker compose up -d --build frontend` để build lại frontend, rồi tải lại trang thanh toán. QR sẽ mở trang xác nhận BrewLite Pay giả lập trên điện thoại; đây không phải giao dịch ngân hàng thật. File `.env` được Git bỏ qua.
+
+Giao diện mặc định cho thanh toán trong 5 phút. Khi cần đổi thời hạn cho bản Docker, thêm `ORDER_PAYMENT_TIMEOUT_MINUTES=5` (hoặc số phút mong muốn) vào file `.env` ở thư mục gốc rồi build lại. Compose truyền cùng một giá trị cho backend và frontend; backend sẽ dùng giá trị này khi chức năng tự hủy đơn của Task 10c được triển khai.
+
 Dừng và dọn dẹp container:
 ```bash
 # Dừng container (dữ liệu DB trong volume pgdata vẫn giữ nguyên)
