@@ -6,15 +6,15 @@ dịch vụ backend trong Docker Compose. Chưa đưa giao diện/API Task 9 và
 
 ## Nền code dùng chung
 
-| Phần | Dùng theo code nhóm hiện tại |
-| --- | --- |
-| Tài khoản | `backend/src/auth/user.entity.ts`; user ID là UUID |
+| Phần               | Dùng theo code nhóm hiện tại                                                                 |
+| ------------------ | -------------------------------------------------------------------------------------------- |
+| Tài khoản          | `backend/src/auth/user.entity.ts`; user ID là UUID                                           |
 | Đăng nhập frontend | `frontend/src/lib/auth.ts`, hook `useAuth`; localStorage `brewlite_token` và `brewlite_user` |
-| Đơn hàng | `backend/src/orders/order.entity.ts`; ID chuỗi `ORD-...`, trạng thái theo `order-status.ts` |
-| Chi tiết đơn | `order-item.entity.ts`: productId, size, toppingIds, qty, unitPrice, lineTotal |
-| Thanh toán | PaymentsModule, Payment entity, MockGatewayModule hiện có từ Task 8 |
-| DB | TypeORM, migration trong `backend/src/migrations`; thay đổi schema dùng migration mới |
-| Khung giao diện | Header, Footer, QueryProvider, route menu/cart/login của nhóm |
+| Đơn hàng           | `backend/src/orders/order.entity.ts`; ID chuỗi `ORD-...`, trạng thái theo `order-status.ts`  |
+| Chi tiết đơn       | `order-item.entity.ts`: productId, size, toppingIds, qty, unitPrice, lineTotal               |
+| Thanh toán         | PaymentsModule, Payment entity, MockGatewayModule hiện có từ Task 8                          |
+| DB                 | TypeORM, migration trong `backend/src/migrations`; thay đổi schema dùng migration mới        |
+| Khung giao diện    | Header, Footer, QueryProvider, route menu/cart/login của nhóm                                |
 
 ## Khi thực hiện bước tích hợp Task 9
 
