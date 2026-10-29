@@ -7,10 +7,10 @@ import { QRCodeSVG } from 'qrcode.react';
 import { formatPrice } from '@/lib/formatPrice';
 import { confirmGatewayPayment, getGatewayDetails, getPayment, PaymentApiError, type GatewayResult, type PaymentDetails } from '@/lib/payments/api';
 import { clearActiveCheckout, getPaymentSession, removeAttempt, savePaymentSession, type PaymentSession } from '@/lib/payments/storage';
+import { ORDER_PAYMENT_TIMEOUT_MS } from '@/lib/payments/timeout';
 import { useCart } from '@/store/useCart';
 
 const POLL_INTERVAL_MS = 2500;
-const POLL_LIMIT_MS = 5 * 60 * 1000;
 
 function publicAppUrl(): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -105,7 +105,7 @@ export default function PaymentGatewayPage() {
 
   useEffect(() => {
     if (!session || details?.status === 'SUCCESS' || details?.status === 'FAILED' || timedOut) return;
-    const remaining = POLL_LIMIT_MS - (Date.now() - session.startedAt);
+    const remaining = ORDER_PAYMENT_TIMEOUT_MS - (Date.now() - session.startedAt);
     const poll = remaining > 0 ? window.setInterval(() => void refreshStatus(), POLL_INTERVAL_MS) : null;
     const timeout = window.setTimeout(() => setTimedOut(true), Math.max(0, remaining));
     return () => { if (poll !== null) window.clearInterval(poll); window.clearTimeout(timeout); };
@@ -203,7 +203,7 @@ export default function PaymentGatewayPage() {
         {error && <p role="alert" className="mt-5 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
         {actionError && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-800">{actionError}</p>}
         {needsLogin && <Link href={`/login?redirect=${encodeURIComponent(`/pay/${paymentId}`)}`} className="mt-3 block text-sm text-amber-800 underline">Đăng nhập lại</Link>}
-        {timedOut && <p role="status" className="mt-5 text-sm text-amber-900">Đã dừng tự kiểm tra sau 5 phút. Bạn vẫn có thể kiểm tra thủ công.</p>}
+        {timedOut && <p role="status" className="mt-5 text-sm text-amber-900">Đã dừng tự kiểm tra sau thời gian chờ. Bạn vẫn có thể kiểm tra thủ công.</p>}
         <div className="mt-7 grid gap-3 sm:grid-cols-2">
           <button type="button" onClick={() => void submitResult('FAILED')} disabled={busy || status !== 'PENDING'}
             className="rounded-xl border border-red-300 px-4 py-3 font-semibold text-red-800 disabled:opacity-50">Giả lập lỗi</button>

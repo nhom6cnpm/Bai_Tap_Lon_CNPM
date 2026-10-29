@@ -7,6 +7,7 @@ export interface CreateOrderResponse {
   total: number;
   status: 'PENDING';
   createdAt: string;
+  expiresAt?: string | null;
 }
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';

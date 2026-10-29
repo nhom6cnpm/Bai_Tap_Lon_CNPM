@@ -47,7 +47,7 @@ export default function CartPage() {
     setLoading(true);
     try {
       const data = await submitOrderApi(items);
-      saveCheckout({ orderId: data.orderId, total: data.total, createdAt: data.createdAt, cartFingerprint: fingerprint });
+      saveCheckout({ orderId: data.orderId, total: data.total, createdAt: data.createdAt, expiresAt: data.expiresAt, cartFingerprint: fingerprint });
       router.push(`/checkout/${encodeURIComponent(data.orderId)}`);
     } catch (err: unknown) {
       // Keep the cart unchanged so the user can try again

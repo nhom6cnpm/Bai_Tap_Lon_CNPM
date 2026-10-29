@@ -1,9 +1,11 @@
 import type { PaymentMethod } from './api';
+import { getCheckoutDeadlineMs } from './timeout';
 
 export interface CheckoutSnapshot {
   orderId: string;
   total: number;
   createdAt: string;
+  expiresAt?: string | null;
   cartFingerprint: string;
 }
 
@@ -56,7 +58,7 @@ export function getActiveCheckout(cartFingerprint: string): CheckoutSnapshot | n
   const snapshot = readStored<CheckoutSnapshot>(activeCheckoutKey);
   if (!snapshot || snapshot.cartFingerprint !== cartFingerprint) return null;
   const saved = getCheckout(snapshot.orderId);
-  return saved && Date.parse(saved.createdAt) + 15 * 60 * 1000 > Date.now() ? saved : null;
+  return saved && getCheckoutDeadlineMs(saved) > Date.now() ? saved : null;
 }
 
 export function clearActiveCheckout(orderId: string): void {

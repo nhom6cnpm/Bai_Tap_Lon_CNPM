@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { formatPrice } from '@/lib/formatPrice';
 import { getStoredToken } from '@/lib/auth';
 import { createPayment, type PaymentMethod } from '@/lib/payments/api';
+import { getCheckoutDeadlineMs } from '@/lib/payments/timeout';
 import {
   getAttempt,
   getCheckout,
@@ -13,8 +14,6 @@ import {
   savePaymentSession,
   type CheckoutSnapshot,
 } from '@/lib/payments/storage';
-
-const PAYMENT_WINDOW_MS = 15 * 60 * 1000;
 
 function newIdempotencyKey(): string {
   if (crypto.randomUUID) return crypto.randomUUID();
@@ -50,7 +49,7 @@ export default function CheckoutPage() {
     return () => { window.clearTimeout(initial); window.clearInterval(timer); };
   }, [orderId]);
 
-  const remaining = snapshot && now !== null ? Date.parse(snapshot.createdAt) + PAYMENT_WINDOW_MS - now : null;
+  const remaining = snapshot && now !== null ? getCheckoutDeadlineMs(snapshot) - now : null;
   const expired = remaining !== null && remaining <= 0;
 
   async function handlePayment() {
