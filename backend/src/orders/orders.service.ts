@@ -9,7 +9,7 @@ import { calculateUnitPrice } from './pricing';
 import { assertTransition, type OrderStatus } from './order-status';
 
 @Injectable()
-  export class OrdersService {
+export class OrdersService {
   constructor(
     @InjectRepository(Order)
     private readonly orderRepository: Repository<Order>,
@@ -34,7 +34,6 @@ import { assertTransition, type OrderStatus } from './order-status';
         );
       }
 
-      // Backend recalculates the price; the client price is never trusted
       const unitPrice = calculateUnitPrice(
         product.price,
         item.size,
@@ -83,7 +82,8 @@ import { assertTransition, type OrderStatus } from './order-status';
       createdAt: savedOrder.createdAt,
     };
   }
-async findById(orderId: string): Promise<Order | null> {
+
+  async findById(orderId: string): Promise<Order | null> {
     return this.orderRepository.findOne({
       where: { id: orderId },
       relations: ['items'],
@@ -95,9 +95,10 @@ async findById(orderId: string): Promise<Order | null> {
     if (!order) {
       throw new BadRequestException(`Đơn hàng ${orderId} không tồn tại`);
     }
-   assertTransition(order.status, status);
+    assertTransition(order.status, status);
     order.status = status;
     return this.orderRepository.save(order);
   }
-  }
+}
+  
 
