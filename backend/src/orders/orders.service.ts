@@ -1,11 +1,12 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, EntityManager, Repository } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { ProductsService } from '../products/products.service';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { calculateUnitPrice } from './pricing';
+import { assertTransition, type OrderStatus } from './order-status';
 
 @Injectable()
 export class OrdersService {
@@ -81,5 +82,33 @@ export class OrdersService {
       status: savedOrder.status,
       createdAt: savedOrder.createdAt,
     };
+  }
+
+  async findById(orderId: string): Promise<Order | null> {
+    return this.orderRepository.findOne({
+      where: { id: orderId },
+      relations: { items: true },
+    });
+  }
+
+  /**
+   * Change an order's status through the state machine (đề mục 9.1).
+   * Pass `manager` to run inside the caller's transaction.
+   */
+  async updateOrderStatus(
+    orderId: string,
+    status: OrderStatus,
+    manager?: EntityManager,
+  ): Promise<Order> {
+    const repository = manager
+      ? manager.getRepository(Order)
+      : this.orderRepository;
+    const order = await repository.findOneBy({ id: orderId });
+    if (!order) {
+      throw new BadRequestException(`Đơn hàng ${orderId} không tồn tại`);
+    }
+    assertTransition(order.status, status);
+    order.status = status;
+    return repository.save(order);
   }
 }
