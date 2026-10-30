@@ -3,6 +3,11 @@
 Cập nhật: 30/10/2026. Đây là checklist theo dõi công việc đã thống nhất với Ân.
 Cập nhật dấu hoàn thành theo kết quả thực tế; không đánh dấu xong chỉ vì đã có demo.
 
+Phạm vi Ân nhắc lại ngày 30/10: chỉ làm/chỉnh phần Task 9, Task 10c/d/e và các
+điểm tích hợp cần thiết của phần mình; giữ các chức năng khác của nhóm. Bước 2
+nối voucher/điểm qua chuyển trạng thái đơn sẵn có, không sửa luồng duyệt thanh
+toán, QR hoặc phân quyền của Task 8.
+
 ## Phương án tiếp theo theo góp ý nhóm (Document 3.docx)
 
 Đã đọc tài liệu và ghi [phương án hủy đơn, tiến trình pha chế, lượt voucher và điểm](task-9-10-team-decisions.md).
@@ -16,7 +21,7 @@ Checklist triển khai tiếp theo:
 
 1. [x] Chuẩn bị nhánh/bản sao lưu, migration/contract chung cho hạn mức voucher,
        lượt dùng, điểm, yêu cầu hủy; rà soát/siết API hủy cũ.
-2. [ ] Backend giữ/chốt/trả lượt và cộng/thu hồi điểm trong transaction; kiểm tra
+2. [x] Backend giữ/chốt/trả lượt và cộng/thu hồi điểm trong transaction; kiểm tra
        đồng thời, gửi lặp và quá hạn trước khi mở giao diện.
 3. [ ] Giao diện voucher còn lượt/đang giữ/ẩn hết lượt; cập nhật điểm và lịch sử.
 4. [ ] Hủy ngay/yêu cầu hủy/nhân viên duyệt hoặc từ chối; UI khách và admin.
@@ -28,7 +33,13 @@ Checklist triển khai tiếp theo:
 Bước 1 đã hoàn thành trên `feature/task-10-benefits-foundation`: 138 unit và
 93 PostgreSQL/API test qua; migration up/down/up giữ nguyên dữ liệu bản sao.
 [Chi tiết bước 1](task-10-benefits-foundation.md). Chưa bật đếm lượt/điểm hay cập
-nhật Docker; bước tiếp theo là mục 2, nối đầy đủ nghiệp vụ trong transaction.
+nhật Docker trong bước 1.
+
+Bước 2 đã hoàn thành trên `feature/task-10-voucher-points`: bật policy version 1
+cho đơn mới, nối giữ/chốt/trả lượt và cộng/thu hồi điểm trong transaction hiện có.
+138 unit, 110 PostgreSQL/API và 8 tình huống nạp cấu hình qua. [Chi tiết bước 2](task-10-voucher-points.md).
+Chưa đổi bản Docker/database chính hoặc frontend; tiếp theo là mục 3, hiển thị
+lượt voucher và cập nhật điểm từ API trên giao diện.
 
 Chi tiết các điểm bổ sung kỹ thuật và dữ liệu cũ ở tài liệu liên kết. Đây là
 phương án triển khai tiếp theo; chưa có các chức năng mới này trên bản Docker.

@@ -832,7 +832,7 @@ describeDatabase(
 
       it('shows an empty list without seeding arbitrary business promotions', async () => {
         const response = await quote().expect(200);
-        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.headers['cache-control']).toBe('private, no-store');
         expect(response.body).toMatchObject({
           subtotal: 35000,
           discount: 0,
@@ -1000,7 +1000,7 @@ describeDatabase(
         expect((await stock()).version).toBe(1);
       });
 
-      it('snapshots the discount and pays the original amount even if the voucher changes or is removed', async () => {
+      it('snapshots the discount and pays the original amount even if the voucher changes or is archived', async () => {
         await voucher();
         const created = await orderWithVoucher('TEST10K').expect(201);
         expect(created.body).toMatchObject({
@@ -1009,7 +1009,14 @@ describeDatabase(
           total: 25000,
           voucherCode: 'TEST10K',
         });
-        await database.getRepository(Voucher).delete('TEST10K');
+        await expect(
+          database.getRepository(Voucher).delete('TEST10K'),
+        ).rejects.toMatchObject({ driverError: { code: '23503' } });
+        await database.getRepository(Voucher).update('TEST10K', {
+          isActive: false,
+          discountValue: 1000,
+          title: 'Archived campaign',
+        });
         const session = await payments.createPayment(
           userId,
           { orderId: created.body.orderId, method: 'WALLET' },
@@ -1081,6 +1088,9 @@ describeDatabase(
 
       it('backfills existing order totals through the voucher migration without activating any codes', async () => {
         const created = await create();
+        await database
+          .getRepository(Order)
+          .update(created.orderId, { benefitsPolicyVersion: 0 });
         await undoThrough('AddVouchers1761850000000');
         await database.runMigrations();
         expect(await getOrder(created.orderId)).toMatchObject({
@@ -1422,15 +1432,22 @@ describeDatabase(
           isPublic: true,
         });
 
-      it('defaults old/new orders to legacy without awarding points or silently reserving vouchers', async () => {
+      it('preserves legacy defaults while new orders enable voucher reservation without awarding points before PAID', async () => {
         const voucher = await addVoucher();
         expect(voucher.maxUsesPerUser).toBe(3);
+        await database.query(
+          `INSERT INTO orders (id, "userId", total, subtotal) VALUES ('LEGACY-BENEFITS', $1, 35000, 35000)`,
+          [userId],
+        );
+        expect((await getOrder('LEGACY-BENEFITS')).benefitsPolicyVersion).toBe(
+          0,
+        );
         const created = await orders.createOrder(userId, {
           items: [item()],
           voucherCode: voucher.code,
         });
         expect(await getOrder(created.orderId)).toMatchObject({
-          benefitsPolicyVersion: 0,
+          benefitsPolicyVersion: 1,
           pointsEarned: 0,
           pointsReversed: 0,
           pointsAwardedAt: null,
@@ -1439,7 +1456,7 @@ describeDatabase(
           cancelRequestStatus: null,
           cancelReason: null,
         });
-        expect(await database.getRepository(VoucherUsage).count()).toBe(0);
+        expect(await database.getRepository(VoucherUsage).count()).toBe(1);
         expect(
           (await database.getRepository(User).findOneByOrFail({ id: userId }))
             .loyaltyPoints,
@@ -1448,9 +1465,6 @@ describeDatabase(
 
       it('supports multiple uses per account, preserves released history, and rejects duplicate usage for one order', async () => {
         const voucher = await addVoucher();
-        await database
-          .getRepository(VoucherUserQuota)
-          .insert({ userId, voucherCode: voucher.code });
         const ids: string[] = [];
         for (let index = 0; index < 3; index++) {
           const created = await orders.createOrder(userId, {
@@ -1458,11 +1472,6 @@ describeDatabase(
             voucherCode: voucher.code,
           });
           ids.push(created.orderId);
-          await database.getRepository(VoucherUsage).insert({
-            orderId: created.orderId,
-            userId,
-            voucherCode: voucher.code,
-          });
         }
         expect(
           await database
@@ -1666,6 +1675,505 @@ describeDatabase(
         expect((await stock()).version).toBe(
           final.status === 'CANCELLED' ? 3 : 2,
         );
+      });
+    });
+
+    describe('voucher quotas and loyalty settlement', () => {
+      const campaign = (overrides: Partial<Voucher> = {}) =>
+        database.getRepository(Voucher).save({
+          code: 'REWARD3',
+          title: 'Rewards fixture',
+          discountType: 'FIXED',
+          discountValue: 5000,
+          minSubtotal: 0,
+          maxDiscount: null,
+          maxUsesPerUser: 3,
+          startsAt: new Date(Date.now() - 86400000),
+          endsAt: new Date(Date.now() + 86400000),
+          isActive: true,
+          isPublic: true,
+          ...overrides,
+        });
+      const discounted = (items = [item()]) =>
+        orders.createOrder(userId, { items, voucherCode: 'REWARD3' });
+      const usage = (orderId: string) =>
+        database.getRepository(VoucherUsage).findOneByOrFail({ orderId });
+      const points = async () =>
+        (await database.getRepository(User).findOneByOrFail({ id: userId }))
+          .loyaltyPoints;
+      const pay = async (orderId: string) => {
+        const payment = await payments.createPayment(
+          userId,
+          { orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        await staffReview(payment.paymentId);
+        return payment;
+      };
+      const ownQuote = (voucherCode?: string) =>
+        request(app.getHttpServer())
+          .post('/vouchers/quote')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ items: [item()], ...(voucherCode ? { voucherCode } : {}) });
+
+      it('quotes guest and account availability without reserving uses; rejects invalid or deleted-account tokens', async () => {
+        await campaign();
+        const quote = await ownQuote('REWARD3').expect(200);
+        expect(quote.body.voucherUsage).toMatchObject({
+          maxUsesPerUser: 3,
+          availableUses: 3,
+          reservedUses: 0,
+          usedUses: 0,
+        });
+        expect(quote.headers['cache-control']).toBe('private, no-store');
+        expect(quote.headers.vary).toContain('Authorization');
+        const guest = await request(app.getHttpServer())
+          .post('/vouchers/quote')
+          .send({ items: [item()] })
+          .expect(200);
+        expect(guest.body.vouchers[0].usage).toBeNull();
+        await request(app.getHttpServer())
+          .post('/vouchers/quote')
+          .set('Authorization', 'Bearer bad-token')
+          .send({ items: [item()] })
+          .expect(401);
+        const deleted = app.get(JwtService).sign({
+          sub: randomUUID(),
+          email: 'deleted@test.local',
+          role: 'CUSTOMER',
+        });
+        await request(app.getHttpServer())
+          .post('/vouchers/quote')
+          .set('Authorization', `Bearer ${deleted}`)
+          .send({ items: [item()] })
+          .expect(401);
+        expect(await database.getRepository(VoucherUserQuota).count()).toBe(0);
+        expect(await database.getRepository(VoucherUsage).count()).toBe(0);
+        expect((await stock()).quantity).toBe(1000);
+      });
+
+      it('accepts only three of four simultaneous orders with different ingredients and rolls back the losing order', async () => {
+        await campaign();
+        const results = await Promise.allSettled(
+          ['1', '3', '5', '6'].map((productId) =>
+            discounted([item({ productId })]),
+          ),
+        );
+        expect(
+          results.filter((result) => result.status === 'fulfilled'),
+        ).toHaveLength(3);
+        expect(
+          results.filter((result) => result.status === 'rejected'),
+        ).toHaveLength(1);
+        expect(await database.getRepository(Order).count()).toBe(3);
+        expect(await database.getRepository(OrderItem).count()).toBe(3);
+        expect(
+          await database
+            .getRepository(VoucherUsage)
+            .countBy({ status: 'RESERVED' }),
+        ).toBe(3);
+        expect(await database.getRepository(VoucherUserQuota).count()).toBe(1);
+        const totals = await database.query<
+          Array<{ id: string; quantity: number; reserved: number }>
+        >(`SELECT i.id, i.quantity, COALESCE(sum(r.amount),0)::int AS reserved
+          FROM ingredients i LEFT JOIN order_ingredient_reservations r ON r."ingredientId"=i.id GROUP BY i.id`);
+        for (const ingredient of totals)
+          expect(ingredient.quantity).toBe(1000 - ingredient.reserved);
+        const quote = await ownQuote().expect(200);
+        expect(quote.body.vouchers[0]).toMatchObject({
+          usage: { availableUses: 0, reservedUses: 3, usedUses: 0 },
+        });
+        expect(quote.body.vouchers[0].unavailableReason).toContain('đang giữ');
+      });
+
+      it('keeps a failed payment reserved, retries the same order and credits only once across repeated staff confirmations', async () => {
+        await campaign();
+        const created = await discounted();
+        await discounted();
+        await discounted();
+        const first = await payments.createPayment(
+          userId,
+          { orderId: created.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.reportPaid(userId, first.paymentId);
+        expect((await usage(created.orderId)).status).toBe('RESERVED');
+        expect(await points()).toBe(0);
+        await staffReview(first.paymentId, 'FAILED');
+        await expect(discounted()).rejects.toThrow('đang giữ');
+        const retry = await payments.createPayment(
+          userId,
+          { orderId: created.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        expect(retry.amount).toBe(30000);
+        await Promise.all(
+          Array.from({ length: 8 }, () => staffReview(retry.paymentId)),
+        );
+        expect((await getOrder(created.orderId)).expiresAt.getTime()).toBe(
+          created.expiresAt.getTime(),
+        );
+        expect((await usage(created.orderId)).status).toBe('USED');
+        expect(await points()).toBe(3);
+        expect((await getOrder(created.orderId)).pointsEarned).toBe(3);
+        expect(await database.getRepository(VoucherUsage).count()).toBe(3);
+        expect((await stock()).version).toBe(4);
+      });
+
+      it('releases an unpaid reservation once and permits a replacement order without deleting usage history', async () => {
+        await campaign();
+        const created = await discounted();
+        await discounted();
+        await discounted();
+        await orders.cancelOrder(userId, created.orderId);
+        await orders.cancelOrder(userId, created.orderId);
+        expect(await usage(created.orderId)).toMatchObject({
+          status: 'RELEASED',
+          usedAt: null,
+          releasedAt: expect.any(Date),
+        });
+        await discounted();
+        expect(await database.getRepository(VoucherUsage).count()).toBe(4);
+        expect(
+          await database
+            .getRepository(VoucherUsage)
+            .countBy({ status: 'RESERVED' }),
+        ).toBe(3);
+        expect(await points()).toBe(0);
+        expect((await stock()).quantity).toBe(940);
+      });
+
+      it('hides fully used vouchers, restores one use and reverses points on internal approved PAID cancellation', async () => {
+        await campaign();
+        const ids: string[] = [];
+        for (let index = 0; index < 3; index++) {
+          const order = await discounted();
+          ids.push(order.orderId);
+          await pay(order.orderId);
+        }
+        expect(await points()).toBe(9);
+        expect((await ownQuote().expect(200)).body.vouchers).toEqual([]);
+        await ownQuote('REWARD3').expect(409);
+        await orders.updateOrderStatus(ids[0], 'CANCELLED');
+        await orders.updateOrderStatus(ids[0], 'CANCELLED');
+        expect(await points()).toBe(6);
+        expect(await getOrder(ids[0])).toMatchObject({
+          status: 'CANCELLED',
+          subtotal: 35000,
+          discount: 5000,
+          total: 30000,
+          voucherCode: 'REWARD3',
+          pointsEarned: 0,
+          pointsReversed: 3,
+          pointsReversedAt: expect.any(Date),
+        });
+        expect(await usage(ids[0])).toMatchObject({
+          status: 'RELEASED',
+          usedAt: expect.any(Date),
+        });
+        const restored = await ownQuote().expect(200);
+        expect(restored.body.vouchers[0].usage).toMatchObject({
+          usedUses: 2,
+          availableUses: 1,
+          reservedUses: 0,
+        });
+        expect(
+          (
+            await database
+              .getRepository(Payment)
+              .findOneByOrFail({ orderId: ids[0] })
+          ).status,
+        ).toBe('SUCCESS');
+      });
+
+      it('floors points after the voucher discount and exposes the balance and order audit through existing own APIs', async () => {
+        await campaign({ discountValue: 30000 });
+        const created = await discounted([item({ qty: 3 })]);
+        expect(created.total).toBe(75000);
+        await pay(created.orderId);
+        const profile = await request(app.getHttpServer())
+          .get('/auth/me')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(profile.body.loyaltyPoints).toBe(7);
+        const detail = await request(app.getHttpServer())
+          .get(`/orders/${created.orderId}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(detail.body).toMatchObject({
+          benefitsPolicyVersion: 1,
+          pointsEarned: 7,
+          pointsReversed: 0,
+        });
+        expect(detail.body.pointsAwardedAt).toBeTruthy();
+        await orders.updateOrderStatus(created.orderId, 'CANCELLED');
+        expect(await points()).toBe(0);
+        expect((await getOrder(created.orderId)).pointsReversed).toBe(7);
+      });
+
+      it('records zero-point settlement and reversal markers without repeating rewards', async () => {
+        await campaign({ discountValue: 30000 });
+        const created = await discounted();
+        expect(created.total).toBe(5000);
+        const payment = await pay(created.orderId);
+        const before = await getOrder(created.orderId);
+        expect(before.pointsEarned).toBe(0);
+        expect(before.pointsAwardedAt).toBeInstanceOf(Date);
+        await staffReview(payment.paymentId);
+        expect(
+          (await getOrder(created.orderId)).pointsAwardedAt?.getTime(),
+        ).toBe(before.pointsAwardedAt?.getTime());
+        await orders.updateOrderStatus(created.orderId, 'CANCELLED');
+        expect(
+          (await getOrder(created.orderId)).pointsReversedAt,
+        ).toBeInstanceOf(Date);
+        expect(await points()).toBe(0);
+      });
+
+      it('atomically adds and reverses points for many different orders belonging to the same user', async () => {
+        await database
+          .getRepository(User)
+          .update(userId, { loyaltyPoints: 12 });
+        const created: string[] = [];
+        for (let index = 0; index < 10; index++)
+          created.push((await create()).orderId);
+        await Promise.all(created.map((id) => pay(id)));
+        expect(await points()).toBe(42);
+        await Promise.all(
+          created
+            .slice(0, 5)
+            .map((id) => orders.updateOrderStatus(id, 'CANCELLED')),
+        );
+        expect(await points()).toBe(27);
+        expect((await stock()).quantity).toBe(900);
+        expect(await database.getRepository(VoucherUsage).count()).toBe(0);
+      });
+
+      it('returns reported, failed and pending uses exactly once when expiry workers race', async () => {
+        await campaign();
+        const created = await Promise.all([
+          discounted(),
+          discounted(),
+          discounted(),
+        ]);
+        const reported = await payments.createPayment(
+          userId,
+          { orderId: created[0].orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.reportPaid(userId, reported.paymentId);
+        const failed = await payments.createPayment(
+          userId,
+          { orderId: created[1].orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        await staffReview(failed.paymentId, 'FAILED');
+        for (const order of created) await expire(order.orderId);
+        await Promise.all([
+          orders.expireUnpaidOrders(),
+          orders.expireUnpaidOrders(),
+        ]);
+        await Promise.all(
+          created.map((order) => orders.cancelOrder(userId, order.orderId)),
+        );
+        expect(
+          await database
+            .getRepository(VoucherUsage)
+            .countBy({ status: 'RELEASED' }),
+        ).toBe(3);
+        expect(
+          (await ownQuote().expect(200)).body.vouchers[0].usage.availableUses,
+        ).toBe(3);
+        expect((await stock()).quantity).toBe(1000);
+        expect((await stock()).version).toBe(7);
+        expect(await points()).toBe(0);
+      });
+
+      it('rolls back order, stock and account rows if persisting a reservation fails', async () => {
+        await campaign();
+        await database.query(
+          `ALTER TABLE voucher_usages ADD CONSTRAINT rewards_reject_reservation CHECK (status <> 'RESERVED')`,
+        );
+        try {
+          await expect(discounted()).rejects.toMatchObject({
+            driverError: { code: '23514' },
+          });
+          expect(await database.getRepository(Order).count()).toBe(0);
+          expect(await database.getRepository(VoucherUserQuota).count()).toBe(
+            0,
+          );
+          expect((await stock()).quantity).toBe(1000);
+        } finally {
+          await database.query(
+            'ALTER TABLE voucher_usages DROP CONSTRAINT rewards_reject_reservation',
+          );
+        }
+        await discounted();
+        expect(await database.getRepository(VoucherUsage).count()).toBe(1);
+      });
+
+      it('rolls back points, voucher usage and PAID together if saving the payment result fails', async () => {
+        await campaign();
+        const created = await discounted();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: created.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        await database.query(
+          `ALTER TABLE payments ADD CONSTRAINT rewards_reject_success CHECK (status <> 'SUCCESS')`,
+        );
+        try {
+          await expect(staffReview(payment.paymentId)).rejects.toThrow();
+          expect((await getOrder(created.orderId)).status).toBe('PENDING');
+          expect((await usage(created.orderId)).status).toBe('RESERVED');
+          expect(await points()).toBe(0);
+          expect((await getOrder(created.orderId)).pointsAwardedAt).toBeNull();
+        } finally {
+          await database.query(
+            'ALTER TABLE payments DROP CONSTRAINT rewards_reject_success',
+          );
+        }
+        await staffReview(payment.paymentId);
+        expect(await points()).toBe(3);
+        expect((await usage(created.orderId)).status).toBe('USED');
+      });
+
+      it('rolls back stock and voucher release when a corrupted points balance cannot be reversed', async () => {
+        await campaign();
+        const created = await discounted();
+        await pay(created.orderId);
+        await database.getRepository(User).update(userId, { loyaltyPoints: 0 });
+        await expect(
+          orders.updateOrderStatus(created.orderId, 'CANCELLED'),
+        ).rejects.toThrow('Số dư điểm');
+        expect((await getOrder(created.orderId)).status).toBe('PAID');
+        expect((await usage(created.orderId)).status).toBe('USED');
+        expect((await stock()).quantity).toBe(980);
+        await database.getRepository(User).update(userId, { loyaltyPoints: 3 });
+        await orders.updateOrderStatus(created.orderId, 'CANCELLED');
+        expect(await points()).toBe(0);
+      });
+
+      it('honors the existing order snapshot after the campaign expires and never extends the campaign on release', async () => {
+        await campaign();
+        const created = await discounted();
+        await database.query(
+          `UPDATE vouchers SET "endsAt"=clock_timestamp()-interval '1 second' WHERE code='REWARD3'`,
+        );
+        await pay(created.orderId);
+        expect(await points()).toBe(3);
+        await orders.updateOrderStatus(created.orderId, 'CANCELLED');
+        expect((await ownQuote().expect(200)).body.vouchers).toEqual([]);
+        await ownQuote('REWARD3').expect(400);
+        expect(await getOrder(created.orderId)).toMatchObject({
+          subtotal: 35000,
+          discount: 5000,
+          total: 30000,
+        });
+      });
+
+      it('supports a one-use campaign and isolates limits between accounts despite client-supplied userId', async () => {
+        await campaign({ maxUsesPerUser: 1 });
+        const created = await discounted();
+        await pay(created.orderId);
+        await expect(discounted()).rejects.toThrow('dùng hết');
+        const other = await database.getRepository(User).save({
+          email: `${randomUUID()}@other-rewards.test`,
+          passwordHash: 'not-used',
+          loyaltyPoints: 0,
+        });
+        const otherToken = app
+          .get(JwtService)
+          .sign({ sub: other.id, email: other.email, role: 'CUSTOMER' });
+        const preview = await request(app.getHttpServer())
+          .post('/vouchers/quote')
+          .set('Authorization', `Bearer ${otherToken}`)
+          .send({ items: [item()], userId })
+          .expect(200);
+        expect(preview.body.vouchers[0].usage.availableUses).toBe(1);
+        await orders.createOrder(other.id, {
+          items: [item()],
+          voucherCode: 'REWARD3',
+        });
+        expect(await database.getRepository(VoucherUsage).count()).toBe(2);
+      });
+
+      it('does not award or claw back benefits for legacy orders created before the policy cutover', async () => {
+        const created = await create();
+        await database
+          .getRepository(Order)
+          .update(created.orderId, { benefitsPolicyVersion: 0 });
+        await database.getRepository(User).update(userId, { loyaltyPoints: 9 });
+        await pay(created.orderId);
+        expect(await points()).toBe(9);
+        expect((await getOrder(created.orderId)).pointsAwardedAt).toBeNull();
+        await orders.updateOrderStatus(created.orderId, 'CANCELLED');
+        expect(await points()).toBe(9);
+        expect((await stock()).quantity).toBe(1000);
+      });
+
+      it('rechecks campaign expiry after waiting for the account lock and rolls back the order', async () => {
+        await campaign({ endsAt: new Date(Date.now() + 3000) });
+        await database
+          .getRepository(VoucherUserQuota)
+          .insert({ userId, voucherCode: 'REWARD3' });
+        const runner = database.createQueryRunner();
+        await runner.connect();
+        await runner.startTransaction();
+        await runner.manager.getRepository(VoucherUserQuota).findOneOrFail({
+          where: { userId, voucherCode: 'REWARD3' },
+          lock: { mode: 'pessimistic_write' },
+        });
+        const pending = discounted().then(
+          (value) => ({ value, error: null }),
+          (error: unknown) => ({ value: null, error }),
+        );
+        try {
+          let waiting = false;
+          for (let attempt = 0; attempt < 60; attempt++) {
+            const [state] = await database.query<Array<{ waiting: boolean }>>(
+              `SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query LIKE '%voucher_user_quotas%') AS waiting`,
+            );
+            if (state.waiting) {
+              waiting = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          expect(waiting).toBe(true);
+          await database.query(
+            `SELECT pg_sleep(GREATEST(0, EXTRACT(EPOCH FROM ("endsAt"-clock_timestamp())))::double precision + 0.05) FROM vouchers WHERE code='REWARD3'`,
+          );
+        } finally {
+          await runner.rollbackTransaction();
+          await runner.release();
+        }
+        const result = await pending;
+        expect(result.value).toBeNull();
+        expect(result.error).toBeInstanceOf(Error);
+        expect(await database.getRepository(Order).count()).toBe(0);
+        expect(await database.getRepository(VoucherUsage).count()).toBe(0);
+        expect((await stock()).quantity).toBe(1000);
+      }, 15000);
+
+      it('does not revoke already reserved uses when the campaign limit is lowered', async () => {
+        await campaign();
+        const first = await discounted();
+        const second = await discounted();
+        await database
+          .getRepository(Voucher)
+          .update('REWARD3', { maxUsesPerUser: 1 });
+        await expect(discounted()).rejects.toThrow('đang giữ');
+        await pay(first.orderId);
+        await pay(second.orderId);
+        expect(await points()).toBe(6);
+        expect(
+          await database
+            .getRepository(VoucherUsage)
+            .countBy({ status: 'USED' }),
+        ).toBe(2);
+        expect((await ownQuote().expect(200)).body.vouchers).toEqual([]);
       });
     });
 

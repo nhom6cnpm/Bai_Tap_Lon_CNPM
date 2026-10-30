@@ -11,6 +11,7 @@ import { User } from '../auth/user.entity';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { VouchersModule } from '../vouchers/vouchers.module';
+import { OrderBenefitsService } from './order-benefits.service';
 
 @Module({
   imports: [
@@ -25,7 +26,12 @@ import { VouchersModule } from '../vouchers/vouchers.module';
     VouchersModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, OrderExpiryService, OrderHistoryService],
+  providers: [
+    OrdersService,
+    OrderExpiryService,
+    OrderHistoryService,
+    OrderBenefitsService,
+  ],
   exports: [OrdersService],
 })
 export class OrdersModule {}

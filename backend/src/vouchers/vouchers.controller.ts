@@ -1,6 +1,16 @@
-import { Body, Controller, Header, HttpCode, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Header,
+  HttpCode,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { CreateOrderDto } from '../orders/dto/create-order.dto';
 import { VouchersService } from './vouchers.service';
+import { OptionalVoucherAuthGuard } from './optional-voucher-auth.guard';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 @Controller('vouchers')
 export class VouchersController {
@@ -8,8 +18,13 @@ export class VouchersController {
 
   @Post('quote')
   @HttpCode(200)
-  @Header('Cache-Control', 'no-store')
-  quote(@Body() dto: CreateOrderDto) {
-    return this.vouchers.quote(dto);
+  @Header('Cache-Control', 'private, no-store')
+  @Header('Vary', 'Authorization')
+  @UseGuards(OptionalVoucherAuthGuard)
+  quote(
+    @Body() dto: CreateOrderDto,
+    @Req() request: { user?: AuthenticatedUser },
+  ) {
+    return this.vouchers.quote(dto, request.user?.userId);
   }
 }

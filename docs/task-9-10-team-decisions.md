@@ -180,4 +180,5 @@ có thể làm vượt hạn mức mới. Nếu cần tính cả lịch sử, ph
 - Desktop/mobile, polling, READY, lý do từ chối, profile điểm, snapshot và dữ liệu cũ.
 
 [Bước 1 đã triển khai trên nhánh riêng](task-10-benefits-foundation.md): cấu trúc
-dữ liệu và siết hủy trực tiếp. Chưa bật nghiệp vụ lượt/điểm hoặc cập nhật Docker.
+dữ liệu và siết hủy trực tiếp. [Bước 2 backend lượt voucher/điểm](task-10-voucher-points.md)
+đã bật đầy đủ transaction cho đơn mới trên nhánh riêng. Chưa cập nhật giao diện/Docker.

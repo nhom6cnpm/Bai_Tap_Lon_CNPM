@@ -4,6 +4,9 @@ Hoàn thành ngày 30/10/2026 trên nhánh `feature/task-10-benefits-foundation`
 tách từ bản tích hợp `3642f6e`. Main đã kiểm tra vẫn ở `61f4474`.
 Phương án nghiệp vụ: [quyết định sau góp ý nhóm](task-9-10-team-decisions.md).
 
+Cập nhật tiếp theo: [bước 2 đã nối nghiệp vụ lượt/điểm](task-10-voucher-points.md)
+trên nhánh riêng. Nội dung dưới đây ghi lại kết quả tại thời điểm hoàn thành bước 1.
+
 ## Đã thực hiện
 
 - Sao lưu Git, thay đổi tài liệu chưa commit và database trước khi sửa code.

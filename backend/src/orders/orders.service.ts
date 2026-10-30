@@ -24,6 +24,8 @@ import { priceOrderItems } from './price-order-items';
 import { assertTransition, type OrderStatus } from './order-status';
 import { cancellationAction } from './order-cancellation';
 import { Payment } from '../payments/entities/payment.entity';
+import { OrderBenefitsService } from './order-benefits.service';
+import { BENEFITS_POLICY_VERSIONS } from './benefits-policy';
 
 @Injectable()
 export class OrdersService {
@@ -34,6 +36,7 @@ export class OrdersService {
     private readonly inventoryService: InventoryService,
     private readonly vouchersService: VouchersService,
     private readonly configService: ConfigService,
+    private readonly benefits: OrderBenefitsService,
   ) {}
 
   async databaseNow(manager: EntityManager): Promise<Date> {
@@ -48,6 +51,7 @@ export class OrdersService {
     dto: CreateOrderDto,
   ): Promise<CreateOrderResponseDto> {
     const savedOrder = await this.dataSource.transaction(async (manager) => {
+      await this.benefits.requireUser(manager, userId);
       const now = await this.databaseNow(manager);
       const orderId = `ORD-${randomUUID()}`;
       const { subtotal, lines } = await priceOrderItems(manager, dto.items);
@@ -62,6 +66,8 @@ export class OrdersService {
         id: orderId,
         userId,
         status: 'PENDING',
+        benefitsPolicyVersion:
+          BENEFITS_POLICY_VERSIONS.VOUCHER_QUOTAS_AND_POINTS,
         subtotal,
         discount: 0,
         total: subtotal,
@@ -88,6 +94,7 @@ export class OrdersService {
           true,
         ),
       );
+      await this.benefits.reserve(order, manager);
       await manager.save(Order, order);
       return order;
     });
@@ -180,6 +187,7 @@ export class OrdersService {
       }
       order.inventoryReleasedAt = now;
     }
+    await this.benefits.reverse(order, manager, now);
     order.status = 'CANCELLED';
     order.cancelReason = reason;
     order.cancelledAt = now;
@@ -254,6 +262,12 @@ export class OrdersService {
         await this.ensureInventoryReservation(order, transaction);
       }
       order.status = status;
+      if (status === 'PAID')
+        await this.benefits.award(
+          order,
+          transaction,
+          await this.databaseNow(transaction),
+        );
       return transaction.save(Order, order);
     };
     if (manager) return transition(manager);

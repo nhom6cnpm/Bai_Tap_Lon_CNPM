@@ -35,6 +35,8 @@ for (const row of rows) {
     row.discountValue === 0 ||
     (row.discountType === 'PERCENT' && row.discountValue > 100) ||
     !integer(row.minSubtotal) ||
+    (row.maxUsesPerUser !== undefined &&
+      (!integer(row.maxUsesPerUser) || row.maxUsesPerUser === 0)) ||
     (row.maxDiscount !== null &&
       (!integer(row.maxDiscount) || row.maxDiscount === 0)) ||
     typeof row.isActive !== 'boolean' ||
@@ -73,7 +75,7 @@ async function main() {
       const {
         rows: [existing],
       } = await client.query(
-        'SELECT "startsAt", "endsAt" FROM vouchers WHERE code = $1 FOR UPDATE',
+        'SELECT "startsAt", "endsAt", "maxUsesPerUser" FROM vouchers WHERE code = $1 FOR UPDATE',
         [row.code],
       );
       if (existing && !update) {
@@ -93,9 +95,9 @@ async function main() {
         throw new Error(`endsAt must be later than startsAt for ${row.code}`);
       const result = await client.query(
         `INSERT INTO vouchers
-        (code, title, "discountType", "discountValue", "minSubtotal", "maxDiscount", "startsAt", "endsAt", "isActive", "isPublic")
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-        ON CONFLICT (code) ${update ? 'DO UPDATE SET title=EXCLUDED.title, "discountType"=EXCLUDED."discountType", "discountValue"=EXCLUDED."discountValue", "minSubtotal"=EXCLUDED."minSubtotal", "maxDiscount"=EXCLUDED."maxDiscount", "startsAt"=EXCLUDED."startsAt", "endsAt"=EXCLUDED."endsAt", "isActive"=EXCLUDED."isActive", "isPublic"=EXCLUDED."isPublic"' : 'DO NOTHING'}`,
+        (code, title, "discountType", "discountValue", "minSubtotal", "maxDiscount", "startsAt", "endsAt", "isActive", "isPublic", "maxUsesPerUser")
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+        ON CONFLICT (code) ${update ? 'DO UPDATE SET title=EXCLUDED.title, "discountType"=EXCLUDED."discountType", "discountValue"=EXCLUDED."discountValue", "minSubtotal"=EXCLUDED."minSubtotal", "maxDiscount"=EXCLUDED."maxDiscount", "startsAt"=EXCLUDED."startsAt", "endsAt"=EXCLUDED."endsAt", "isActive"=EXCLUDED."isActive", "isPublic"=EXCLUDED."isPublic", "maxUsesPerUser"=EXCLUDED."maxUsesPerUser"' : 'DO NOTHING'}`,
         [
           row.code,
           row.title,
@@ -107,6 +109,7 @@ async function main() {
           endsAt,
           row.isActive,
           row.isPublic,
+          row.maxUsesPerUser ?? existing?.maxUsesPerUser ?? 3,
         ],
       );
       if (!result.rowCount) counts.skipped++;
