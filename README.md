@@ -19,8 +19,9 @@ Task 10c: [giữ nguyên liệu 5 phút, hủy/hết hạn và kiểm thử Post
 Task 10d: [khóa yêu cầu thanh toán, gửi lại và callback lặp](docs/task-10d-payments.md).
 
 Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá trên đơn](docs/task-10e-vouchers.md).
-Đã có giao diện và nền xử lý trên nhánh `feature/task-10-vouchers`; chưa bật mã thật hoặc
-tích điểm khi nhóm chưa chốt quy tắc.
+Đã có giao diện và nền xử lý trên nhánh `feature/task-10-vouchers`; có cấu hình
+[ba voucher mẫu](backend/voucher-samples.json) để nạp bằng `npm run vouchers:seed`
+trong backend. Cách chỉnh/xem chi tiết ở tài liệu Task 10e. Tích điểm chưa triển khai.
 
 ## Công nghệ
 

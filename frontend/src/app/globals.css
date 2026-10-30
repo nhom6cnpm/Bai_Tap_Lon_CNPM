@@ -24,3 +24,18 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+.voucher-ticket {
+  mask-image:
+    radial-gradient(
+      circle at var(--voucher-stub-width) 0,
+      transparent 5px,
+      #000 5.5px
+    ),
+    radial-gradient(
+      circle at var(--voucher-stub-width) 100%,
+      transparent 5px,
+      #000 5.5px
+    );
+  mask-composite: intersect;
+}

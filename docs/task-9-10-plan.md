@@ -111,11 +111,15 @@ Phối hợp thiết kế từ bước 2, kiểm chứng với DB thật và gia
 
 Ân xác nhận ngày 30/10: chưa có quy tắc/mã được nhóm chốt, nhưng cho phép làm
 **giao diện và nền voucher trước**. Nhánh `feature/task-10-vouchers` trong thư mục
-chính. Không tự phát hành mã, đặt mức giảm thật hoặc tỷ lệ tích điểm.
+chính. Sau đó Ân cho phép tự đề xuất quy tắc và chốt làm bảng tiền/voucher đã áp
+dụng, thêm ba mã mẫu có thể chỉnh cấu hình. Chưa triển khai tích điểm hoặc giới
+hạn lượt dùng; các mã mẫu chỉ phục vụ thử nghiệm trước khi nghiệm thu chính sách.
 
-- [ ] Nhóm xác định mã, mức giảm, điều kiện áp dụng và tỷ lệ tích điểm;
-      không tự đặt quy tắc chưa được giao.
+- [ ] Ân xác nhận chính sách dùng chính thức, giới hạn lượt dùng và tỷ lệ tích điểm;
+      ba mã mẫu đã được phép nạp riêng để thử nghiệm và điều chỉnh.
 - [x] Giao diện chọn mã công khai hoặc nhập mã, đổi/bỏ mã và trạng thái tải/rỗng/lỗi.
+- [x] Voucher đã áp dụng có badge khoản giảm thực tế; giỏ/checkout/chi tiết dùng
+      bảng tiền chung; có lệnh nạp và cập nhật ba voucher mẫu.
 - [x] API quote và kiểm tra khi tạo đơn, tính giá trên backend, lưu snapshot giảm giá.
 - [x] Checkout/xác nhận hiển thị giảm giá; QR/Thẻ dùng tổng sau giảm, thử lại giữ số tiền.
 - [ ] Cộng loyaltyPoints đúng một lần sau PAID, dùng chung luồng thanh toán.

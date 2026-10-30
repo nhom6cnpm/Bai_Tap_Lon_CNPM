@@ -90,19 +90,29 @@ test("select a public voucher and pay the discounted amount through the QR on a 
   await dialog.getByRole("button", { name: "Xác nhận", exact: true }).click();
   const place = page.getByRole("button", { name: /^Đặt hàng/ });
   await expect(place).toHaveText(/25[.,]000/);
+  await expect(
+    page.getByRole("button", { name: "Chọn voucher khác" }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Khoản giảm đã áp dụng")).toContainText(
+    /10[.,]000/,
+  );
+  await expect(
+    page.getByRole("region", { name: "Tổng kết thanh toán" }),
+  ).toContainText("Tổng tiền món");
+  await fits(page, "voucher-applied");
   await place.click();
   await expect(page).toHaveURL(/\/checkout\/ORD-/);
   const id = decodeURIComponent(
     new URL(page.url()).pathname.split("/").at(-1)!,
   );
-  await expect(page.getByText("Ưu đãi UI10K")).toBeVisible();
+  await expect(page.getByText("Voucher UI10K", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByRole("button", { name: /^Thanh toán/ })).toHaveText(
     /25[.,]000/,
   );
   await page.goto("/cart");
   await expect(
-    page.getByRole("button", { name: "Chọn hoặc nhập mã" }),
+    page.getByRole("button", { name: "Chọn voucher khác" }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Tiếp tục đơn hàng" }).click();
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
@@ -123,7 +133,12 @@ test("select a public voucher and pay the discounted amount through the QR on a 
       "Đã thanh toán thành công",
     );
     await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
-    await expect(page.getByText("Ưu đãi UI10K")).toBeVisible();
+    await expect(
+      page.getByText("Voucher UI10K", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("region", { name: "Tổng kết thanh toán" }),
+    ).toContainText(/Bạn tiết kiệm 10[.,]000/);
     const order = await (
       await request.get(`${api}/orders/${id}`, {
         headers: { Authorization: `Bearer ${auth.access_token}` },
@@ -143,6 +158,18 @@ test("select a public voucher and pay the discounted amount through the QR on a 
       ),
     ).toBe("");
     await fits(page);
+    await page.goto("/orders");
+    await expect(
+      page.getByRole("article").filter({ hasText: id }),
+    ).toContainText(/Đã giảm 10[.,]000/);
+    await page
+      .getByRole("article")
+      .filter({ hasText: id })
+      .getByRole("link", { name: "Xem chi tiết" })
+      .click();
+    await expect(
+      page.getByRole("region", { name: "Tổng kết thanh toán" }),
+    ).toContainText("Voucher UI10K");
   } finally {
     await phone.close();
   }
@@ -168,6 +195,9 @@ test("enter a private code, reject a wrong code and preserve selection through l
   await expect(page.getByRole("button", { name: /^Đặt hàng/ })).toHaveText(
     /31[.,]500/,
   );
+  await expect(page.getByLabel("Khoản giảm đã áp dụng")).toContainText(
+    /3[.,]500/,
+  );
   await page.getByRole("button", { name: /^Đặt hàng/ }).click();
   await expect(page).toHaveURL(/\/login\?redirect=/);
   await page.getByLabel("Email", { exact: true }).fill(auth.email);
@@ -179,7 +209,9 @@ test("enter a private code, reject a wrong code and preserve selection through l
   );
   await page.getByRole("button", { name: /^Đặt hàng/ }).click();
   await expect(page).toHaveURL(/\/checkout\/ORD-/);
-  await expect(page.getByText("Ưu đãi UIPRIVATE")).toBeVisible();
+  await expect(
+    page.getByText("Voucher UIPRIVATE", { exact: true }),
+  ).toBeVisible();
 });
 
 test("revalidates a selected voucher when quantity changes and allows removing it", async ({
@@ -200,6 +232,7 @@ test("revalidates a selected voucher when quantity changes and allows removing i
   await expect(page.getByRole("main").getByRole("alert")).toContainText(
     "chưa đạt tối thiểu",
   );
+  await expect(page.getByLabel("Khoản giảm đã áp dụng")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Đặt hàng/ })).toBeDisabled();
   await page.getByRole("button", { name: "Bỏ mã", exact: true }).click();
   await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);

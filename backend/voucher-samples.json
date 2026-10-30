@@ -1,0 +1,35 @@
+[
+  {
+    "code": "THU5K",
+    "title": "Ưu đãi mẫu: giảm 5.000đ cho đơn từ 30.000đ",
+    "discountType": "FIXED",
+    "discountValue": 5000,
+    "minSubtotal": 30000,
+    "maxDiscount": null,
+    "validDays": 30,
+    "isActive": true,
+    "isPublic": true
+  },
+  {
+    "code": "BREW10",
+    "title": "Ưu đãi mẫu: giảm 10%, tối đa 10.000đ",
+    "discountType": "PERCENT",
+    "discountValue": 10,
+    "minSubtotal": 50000,
+    "maxDiscount": 10000,
+    "validDays": 30,
+    "isActive": true,
+    "isPublic": true
+  },
+  {
+    "code": "NHOM15K",
+    "title": "Ưu đãi mẫu: giảm 15.000đ cho đơn từ 100.000đ",
+    "discountType": "FIXED",
+    "discountValue": 15000,
+    "minSubtotal": 100000,
+    "maxDiscount": null,
+    "validDays": 30,
+    "isActive": true,
+    "isPublic": true
+  }
+]

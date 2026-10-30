@@ -7,12 +7,15 @@ import { quoteVoucher } from "@/lib/vouchers";
 import { formatPrice } from "@/lib/formatPrice";
 import type { CartItem } from "@/store/useCart";
 import VoucherIcon from "./VoucherIcon";
+import VoucherBadge from "./VoucherBadge";
 
 interface Props {
   items: CartItem[];
   selectedCode: string;
   onSelect: (code: string) => void;
   disabled?: boolean;
+  locked?: boolean;
+  appliedDiscount?: number;
 }
 
 function VoucherDialog({
@@ -163,26 +166,15 @@ function VoucherDialog({
           {list.data?.vouchers.map((voucher) => (
             <label
               key={voucher.code}
-              className={`relative flex overflow-hidden rounded-xl border bg-white transition-colors focus-within:ring-2 focus-within:ring-amber-700 focus-within:ring-offset-2 ${voucher.unavailableReason ? "cursor-not-allowed border-stone-200 text-stone-500" : draft === voucher.code ? "cursor-pointer border-amber-700 shadow-sm" : "cursor-pointer border-stone-200 hover:border-amber-400"}`}
+              className={`voucher-ticket relative flex overflow-hidden rounded-lg border bg-white transition-colors [--voucher-stub-width:4.5rem] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-amber-700 sm:[--voucher-stub-width:5.5rem] ${voucher.unavailableReason ? "cursor-not-allowed border-stone-200 text-stone-500" : draft === voucher.code ? "cursor-pointer border-amber-700" : "cursor-pointer border-stone-200 hover:border-amber-400"}`}
             >
               <span
                 aria-hidden="true"
-                className={`flex w-20 shrink-0 flex-col items-center justify-center gap-2 border-r border-dashed px-2 py-5 sm:w-24 ${voucher.unavailableReason ? "border-stone-300 bg-stone-100 text-stone-400" : "border-amber-300 bg-amber-50 text-amber-800"}`}
+                className={`flex w-[var(--voucher-stub-width)] shrink-0 flex-col items-center justify-center gap-2 border-r border-dashed px-2 py-5 ${voucher.unavailableReason ? "border-stone-200 bg-stone-50 text-stone-400" : "border-amber-200 bg-amber-50/70 text-amber-800"}`}
               >
-                <VoucherIcon className="size-9" />
+                <VoucherIcon className="size-8" />
                 <span className="text-center text-xs font-bold">BrewLite</span>
-                <span className="text-[10px] font-semibold uppercase tracking-wider">
-                  Voucher
-                </span>
               </span>
-              <span
-                aria-hidden="true"
-                className="absolute -top-1.5 left-20 size-3 -translate-x-1/2 rounded-full border border-stone-200 bg-white sm:left-24"
-              />
-              <span
-                aria-hidden="true"
-                className="absolute -bottom-1.5 left-20 size-3 -translate-x-1/2 rounded-full border border-stone-200 bg-white sm:left-24"
-              />
               <span className="flex min-w-0 flex-1 items-center gap-3 p-3 sm:p-4">
                 <span className="min-w-0 flex-1 text-sm">
                   <span
@@ -267,25 +259,38 @@ function VoucherDialog({
 
 export default function VoucherPicker(props: Props) {
   const [open, setOpen] = useState(false);
+  const applied = !!props.selectedCode && props.appliedDiscount !== undefined;
   return (
     <div className="my-4 rounded-2xl border border-stone-200 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="flex items-center gap-2 font-semibold">
-          <VoucherIcon className="size-5 shrink-0 text-amber-800" />
-          Ưu đãi BrewLite
+          <VoucherIcon
+            checked={applied}
+            className="size-5 shrink-0 text-amber-800"
+          />
+          Voucher BrewLite
         </span>
-        <button
-          disabled={props.disabled}
-          onClick={() => setOpen(true)}
-          className="text-sm font-semibold text-amber-800 underline disabled:opacity-50"
-        >
-          Chọn hoặc nhập mã
-        </button>
+        <div className="flex flex-wrap items-center gap-3">
+          {applied && (
+            <span aria-label="Khoản giảm đã áp dụng">
+              <VoucherBadge discount={props.appliedDiscount!} />
+            </span>
+          )}
+          <button
+            disabled={props.disabled}
+            onClick={() => setOpen(true)}
+            className="text-sm font-semibold text-amber-800 underline disabled:opacity-50"
+          >
+            {applied ? "Chọn voucher khác" : "Chọn hoặc nhập mã"}
+          </button>
+        </div>
       </div>
       {props.selectedCode && (
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
           <span className="break-all font-semibold text-amber-900">
-            {props.selectedCode}
+            {applied
+              ? `Đã áp dụng ${props.selectedCode}`
+              : `Mã đang chọn: ${props.selectedCode}`}
           </span>
           <button
             disabled={props.disabled}
@@ -296,7 +301,7 @@ export default function VoucherPicker(props: Props) {
           </button>
         </div>
       )}
-      {props.disabled && (
+      {props.locked && (
         <p className="mt-2 text-xs text-stone-500">
           Mã và số tiền được giữ theo đơn đã tạo. Tiếp tục thanh toán đơn hiện
           tại.

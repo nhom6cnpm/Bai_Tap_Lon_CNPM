@@ -163,10 +163,17 @@ export function OrderCard({
         >
           Xem chi tiết
         </Link>
-        <p className="font-semibold">
-          Tổng tiền:{" "}
-          <span className="text-amber-900">{formatPrice(order.total)}</span>
-        </p>
+        <div className="text-right">
+          <p className="font-semibold">
+            Tổng tiền:{" "}
+            <span className="text-amber-900">{formatPrice(order.total)}</span>
+          </p>
+          {order.discount > 0 && (
+            <p className="mt-1 text-xs text-green-800">
+              Đã giảm {formatPrice(order.discount)}
+            </p>
+          )}
+        </div>
       </div>
       {(order.status === "PENDING" || order.status === "PAYMENT_FAILED") && (
         <div className="mt-4">

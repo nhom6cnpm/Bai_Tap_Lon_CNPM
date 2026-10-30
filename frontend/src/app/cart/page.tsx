@@ -20,6 +20,7 @@ import { getMyOrder, OrderApiError } from "@/lib/orders/history";
 import { canPay, isPaid } from "@/lib/orderUtils";
 import VoucherPicker from "@/components/VoucherPicker";
 import { useVoucherQuote } from "@/hooks/useVoucherQuote";
+import PriceSummary from "@/components/PriceSummary";
 
 const toppingLabel = (ids: string[]) =>
   ids.length
@@ -270,16 +271,18 @@ export default function CartPage() {
                 </button>
               )}
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span>Tạm tính</span>
-              <span>{formatPrice(displayedSubtotal)}</span>
-            </div>
             <VoucherPicker
               items={items}
               selectedCode={
                 savedOrder?.voucherCode ?? (resume ? "" : voucherCode)
               }
               onSelect={setVoucherCode}
+              appliedDiscount={
+                savedOrder?.voucherCode || currentQuote?.voucherCode
+                  ? displayedDiscount
+                  : undefined
+              }
+              locked={resume}
               disabled={
                 loading || resume || (!!candidate && activeOrder.isPending)
               }
@@ -303,20 +306,17 @@ export default function CartPage() {
                 Đang kiểm tra ưu đãi…
               </p>
             )}
-            {(displayedDiscount > 0 ||
-              savedOrder?.voucherCode ||
-              voucherCode) && (
-              <div className="mb-3 flex items-center justify-between text-sm text-green-800">
-                <span>Giảm giá</span>
-                <span>−{formatPrice(displayedDiscount)}</span>
-              </div>
-            )}
-            <div className="flex items-center justify-between text-lg font-bold">
-              <span>Tổng thanh toán</span>
-              <span className="text-amber-800">
-                {formatPrice(displayedTotal)}
-              </span>
-            </div>
+            <PriceSummary
+              totals={{
+                subtotal: displayedSubtotal,
+                discount: displayedDiscount,
+                total: displayedTotal,
+                voucherCode:
+                  savedOrder?.voucherCode ?? currentQuote?.voucherCode,
+                voucherTitle:
+                  savedOrder?.voucherTitle ?? currentQuote?.voucherTitle,
+              }}
+            />
 
             {errorMessage && (
               <div

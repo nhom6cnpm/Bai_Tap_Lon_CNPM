@@ -1,10 +1,9 @@
 "use client";
-import OrderDiscount from "./OrderDiscount";
+import PriceSummary from "@/components/PriceSummary";
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useOrderClock, useOwnOrder } from "@/hooks/useOrderHistory";
-import { formatPrice } from "@/lib/formatPrice";
 import { formatDate, orderStatusLabel } from "@/lib/orderUtils";
 import {
   LoginPrompt,
@@ -110,13 +109,7 @@ export function OrderDetail({
                 <div className="mt-4 border-t border-stone-100">
                   <OrderItems order={order} />
                 </div>
-                <OrderDiscount order={order} />
-                <div className="mt-2 flex items-center justify-between gap-3 border-t border-stone-200 pt-5 font-bold">
-                  <span>Tổng tiền đơn hàng</span>
-                  <strong className="text-xl text-amber-900">
-                    {formatPrice(order.total)}
-                  </strong>
-                </div>
+                <PriceSummary totals={order} />
                 <p className="mt-3 text-sm text-stone-600">
                   Phương thức:{" "}
                   {order.paymentMethod === "WALLET"

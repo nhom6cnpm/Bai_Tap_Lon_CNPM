@@ -3,13 +3,18 @@
 Cập nhật 30/10/2026. Nhánh `feature/task-10-vouchers`, thư mục chính
 `Bai_Tap_Lon_CNPM`, kế thừa Task 9, 10c/d và frontend thanh toán Task 8.
 
-Ân yêu cầu triển khai trước giao diện và nền xử lý; nhóm **chưa chốt mã/mức giảm**.
-Migration không tạo hoặc kích hoạt voucher nào. Chưa triển khai tích điểm và chưa
-đánh dấu toàn bộ Task 10e hoàn thành.
+Ân đã chốt bố cục voucher đã áp dụng và bảng tiền dùng chung, đồng thời cho phép
+thêm voucher mẫu để thử và điều chỉnh. Migration không tự kích hoạt mã; ba mã
+mẫu được nạp riêng bằng lệnh trong tài liệu này. Chưa triển khai tích điểm hoặc
+giới hạn lượt dùng theo tài khoản, chưa đánh dấu toàn bộ Task 10e hoàn thành.
 
 ## Bố cục và hành vi
 
-- Trong giỏ: Tạm tính → Ưu đãi BrewLite → Giảm giá → Tổng thanh toán → Đặt hàng.
+- Trong giỏ: Voucher BrewLite → bảng Tổng tiền món/Voucher/Tổng thanh toán → Đặt hàng.
+- Mã đã được backend kiểm tra có badge khoản giảm thực tế, dấu chọn và nút
+  “Chọn voucher khác”; mất điều kiện thì bỏ trạng thái đã áp dụng và báo lỗi.
+- Giỏ, checkout, chi tiết và xác nhận dùng chung `PriceSummary`. Lịch sử liệt kê
+  tổng thanh toán và số tiền đã giảm; trang chi tiết dùng dữ liệu đã lưu trên đơn.
 - “Chọn hoặc nhập mã” mở hộp thoại trên desktop, bảng từ dưới lên trên mobile.
   Có ô nhập/kiểm tra mã, danh sách công khai, điều kiện, hạn dùng và lý do không
   đủ điều kiện; một đơn chọn một mã. Có Bỏ chọn, Bỏ mã, Đóng và Escape.
@@ -88,8 +93,55 @@ lặp không áp giảm/trừ kho lần hai. Không sửa cơ chế ký callback
 ## Kiểm tra và xem thử
 
 Mở `http://localhost:3000/menu`, thêm món, vào Giỏ hàng → “Chọn hoặc nhập mã”.
-Khi chưa có mã được nhóm duyệt, danh sách hiện thông báo chưa có ưu đãi; không
-đưa các mã test vào database đồ án để làm như mã thật.
+Các mã kiểm thử tự động vẫn chỉ ở database test. Ba mã mẫu bên dưới được nạp vào
+database đồ án theo yêu cầu riêng của Ân để xem giao diện và điều chỉnh.
+
+## Voucher mẫu và cách điều chỉnh
+
+Cấu hình tại `backend/voucher-samples.json`:
+
+| Mã | Giảm | Đơn tối thiểu | Trần giảm |
+| --- | --- | --- | --- |
+| THU5K | 5.000đ | 30.000đ | — |
+| BREW10 | 10% | 50.000đ | 10.000đ |
+| NHOM15K | 15.000đ | 100.000đ | — |
+
+Mặc định hoạt động 30 ngày kể từ lần nạp đầu. Đây là mẫu sử dụng thử, chưa có
+giới hạn lượt dùng tổng hoặc theo tài khoản. Mỗi đơn vẫn chỉ dùng một mã.
+
+Từ thư mục `backend`, đọc kết nối trong `.env` (Docker local dùng DB localhost:5432):
+
+```powershell
+# Nạp mẫu lần đầu; mã trùng được bỏ qua, không xóa mã khác.
+npm.cmd run vouchers:seed
+
+# Sau khi sửa file JSON: cập nhật riêng các mã có trong file.
+npm.cmd run vouchers:seed -- --update
+```
+
+Sau khi cập nhật chỉ cần tải lại giỏ/mở lại hộp chọn, không build lại ứng dụng.
+Sửa `discountValue`, `minSubtotal`, `maxDiscount`, `title`, `isActive`, `isPublic`
+trong JSON rồi chạy lệnh cập nhật. `FIXED` dùng số tiền đồng; `PERCENT` dùng số %.
+Đổi `code` được hiểu là thêm mã khác, không xóa mã cũ; muốn ẩn mã cũ, giữ cấu hình
+mã đó và đặt `isActive: false` rồi cập nhật.
+
+`validDays` chỉ đặt thời hạn cho mã mới. Chạy lại, kể cả `--update`, không tự gia
+hạn mã đang có. Muốn đổi thời gian, thêm `startsAt`/`endsAt` có múi giờ, ví dụ
+`"endsAt": "2026-11-30T23:59:59+07:00"`, rồi cập nhật. Mã trên đơn cũ và tiền
+thanh toán vẫn giữ nguyên sau các thay đổi này.
+
+Nếu chỉ dùng Docker, image backend có sẵn script/file mẫu:
+
+```powershell
+docker compose exec backend npm run vouchers:seed
+# Sau khi sửa JSON trên máy, chép file vào container rồi cập nhật:
+docker compose cp backend/voucher-samples.json backend:/app/voucher-samples.json
+docker compose exec backend npm run vouchers:seed -- --update
+```
+
+Lệnh nạp chỉ ghi bảng vouchers trong transaction, kiểm tra dữ liệu trước khi ghi,
+không đụng tài khoản, đơn hàng, payment hoặc nguyên liệu. Không có API quản trị
+công khai; người chỉnh cấu hình cần quyền truy cập máy/database dự án.
 
 Các mã `UI10K`, `UIMIN`, `UIPRIVATE` chỉ được tạo bởi
 `backend/test/start-task9-ui-server.cjs`, được chặn bằng tên database `_ui_test`.
@@ -113,7 +165,7 @@ npm.cmd run test:e2e -- tests/vouchers.spec.ts
 - Công thức tích điểm sau PAID, cách làm tròn và xử lý khi đơn PAID bị hủy.
 - Review PR trước khi merge; chưa push/merge main.
 
-## Kết quả xác minh ngày 30/10
+## Kết quả xác minh lần triển khai nền voucher ngày 30/10
 
 - Backend: 111 unit/HTTP test và 76 e2e PostgreSQL qua, không skip. Các ca bổ sung
   gồm quote không ghi kho, mã sai/hết hạn/chưa tới hạn/tắt, điều kiện đơn tối thiểu,
@@ -138,3 +190,21 @@ npm.cmd run test:e2e -- tests/vouchers.spec.ts
 - Ảnh production nằm ngoài Git tại `.task9-recovery/voucher-docker-desktop.png`
   và `voucher-docker-mobile.png`. Cảnh báo Node engine/npm audit từ image nền đã
   được ghi nhận ở các task trước; không nâng dependency trong phạm vi voucher.
+
+## Cập nhật bảng tiền và voucher mẫu ngày 30/10
+
+- Đã chạy cả 30 kiểm thử Playwright desktop/mobile qua, không skip. Có kiểm tra
+  badge khoản giảm thực tế, mất điều kiện thì bỏ badge, bảng tiền xuyên giỏ →
+  checkout → xác nhận → lịch sử/chi tiết, QR và thử lại thanh toán.
+- Script nạp mẫu được kiểm tra trên DB riêng: chạy lại bỏ qua mã trùng, cập nhật
+  đúng giá trị, giữ thời hạn gốc, cấu hình phần trăm sai bị từ chối không ghi DB.
+- Trên DB đồ án, nạp 3 mã, chạy lại bỏ qua cả 3. Đối chiếu fingerprint giữ nguyên
+  1 user, 6 sản phẩm, 9 nguyên liệu, 6 đơn, 6 dòng món, 5 payment và 19 dòng giữ
+  nguyên liệu. Snapshot trước nạp: `.task9-recovery/voucher-samples-before-20261030.json`.
+- Không thêm migration; dữ liệu giảm giá lịch sử vẫn dùng snapshot có sẵn.
+- Lint/TypeScript/format qua; build Docker cả frontend/backend qua. Đã cập nhật
+  hai container ứng dụng; kiểm tra production desktop/mobile chọn THU5K trên giỏ
+  35.000đ, badge −5.000đ, tổng 30.000đ, đổi/bỏ mã đều qua, không tạo đơn/user mới.
+  Chạy script trong Docker bỏ qua đúng 3 mã trùng. Ảnh bản chạy nằm ngoài Git tại
+  `.task9-recovery/voucher-approved-desktop.png`, `voucher-approved-mobile.png`
+  và `voucher-samples-list-desktop.png`, `voucher-samples-list-mobile.png`.
