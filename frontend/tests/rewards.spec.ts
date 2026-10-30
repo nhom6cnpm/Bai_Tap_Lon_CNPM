@@ -195,6 +195,9 @@ test("hides fully consumed vouchers and shows persisted earned points in the hea
 function rewardOrder(cancelled = false, zero = false): Order {
   const now = new Date().toISOString();
   return {
+    canCancelImmediately: false,
+    canRequestCancellation: false,
+    cancelRequest: null,
     id: "ORD-REWARDS-UI",
     status: cancelled ? "CANCELLED" : "PAID",
     subtotal: 105000,

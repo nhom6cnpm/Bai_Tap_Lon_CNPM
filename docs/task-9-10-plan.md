@@ -24,7 +24,7 @@ Checklist triển khai tiếp theo:
 2. [x] Backend giữ/chốt/trả lượt và cộng/thu hồi điểm trong transaction; kiểm tra
        đồng thời, gửi lặp và quá hạn trước khi mở giao diện.
 3. [x] Giao diện voucher còn lượt/đang giữ/ẩn hết lượt; cập nhật điểm và lịch sử.
-4. [ ] Hủy ngay/yêu cầu hủy/nhân viên duyệt hoặc từ chối; UI khách và admin.
+4. [x] Hủy ngay/yêu cầu hủy/nhân viên duyệt hoặc từ chối; UI khách và admin.
 5. [ ] Hai tab quản trị, bảng pha chế PAID → PREPARING → READY → COMPLETED,
        thông báo READY phía khách.
 6. [ ] Kiểm thử chung, migration trên bản sao, cập nhật tài liệu/Postman, build
@@ -46,6 +46,13 @@ trong lịch sử và chi tiết đơn. Lint, TypeScript và build frontend qua.
 42 ca qua trong lần chạy chung; hai ca còn lại lỗi chờ chuyển trang trong test,
 đã sửa và chạy lại cả hai qua. [Chi tiết bước 3](task-10-voucher-points-ui.md).
 Chưa cập nhật Docker/database chính; tiếp theo là mục 4, hủy ngay và yêu cầu hủy.
+
+Bước 4 đã hoàn thành trên `feature/task-9-cancellation-review`: API/quyền hủy,
+giao diện khách và danh sách nhân viên duyệt/từ chối, đóng yêu cầu quá hạn.
+138 unit, 122 PostgreSQL/API test qua; 52 ca UI qua trong lượt chung, hai ca
+còn lại sửa bộ chọn thông báo trong test và chạy lại 2/2 qua.
+[Chi tiết bước 4](task-9-cancellation-review.md). Chưa đổi Docker/database chính;
+tiếp theo là mục 5, bảng pha chế và thông báo READY phía khách.
 
 Chi tiết các điểm bổ sung kỹ thuật và dữ liệu cũ ở tài liệu liên kết. Đây là
 phương án triển khai tiếp theo; chưa có các chức năng mới này trên bản Docker.

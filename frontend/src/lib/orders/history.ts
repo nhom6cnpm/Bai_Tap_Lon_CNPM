@@ -5,6 +5,7 @@ import {
   type Order,
   type OrderBenefits,
   type OrderItem,
+  type OrderCancellation,
 } from "@/types/order";
 
 export class OrderApiError extends Error {
@@ -40,7 +41,43 @@ function isItem(value: unknown): value is OrderItem {
     money(value.lineTotal)
   );
 }
-type OrderWire = Omit<Order, keyof OrderBenefits> & Partial<OrderBenefits>;
+type OrderWire = Omit<Order, keyof OrderBenefits | keyof OrderCancellation> &
+  Partial<OrderBenefits & OrderCancellation>;
+function validCancellation(value: Record<string, unknown>): boolean {
+  if (
+    value.canCancelImmediately === undefined &&
+    value.canRequestCancellation === undefined &&
+    value.cancelRequest === undefined
+  )
+    return true;
+  if (
+    typeof value.canCancelImmediately !== "boolean" ||
+    typeof value.canRequestCancellation !== "boolean" ||
+    (value.canCancelImmediately && value.canRequestCancellation)
+  )
+    return false;
+  const request = value.cancelRequest;
+  if (request === null) return true;
+  return (
+    record(request) &&
+    typeof request.id === "string" &&
+    !!request.id &&
+    ["PENDING", "APPROVED", "REJECTED", "EXPIRED"].includes(
+      String(request.status),
+    ) &&
+    typeof request.reason === "string" &&
+    !!request.reason.trim() &&
+    date(request.requestedAt) &&
+    (request.reviewedAt === null || date(request.reviewedAt)) &&
+    (request.reviewedBy === null || typeof request.reviewedBy === "string") &&
+    (request.reviewNote === null || typeof request.reviewNote === "string") &&
+    (request.status !== "PENDING" ||
+      (request.reviewedAt === null &&
+        !value.canCancelImmediately &&
+        !value.canRequestCancellation)) &&
+    (request.status === "PENDING" || date(request.reviewedAt))
+  );
+}
 const benefitKeys = [
   "benefitsPolicyVersion",
   "pointsEarned",
@@ -65,6 +102,7 @@ function isOrder(value: unknown): value is OrderWire {
   return (
     record(value) &&
     validBenefits(value) &&
+    validCancellation(value) &&
     typeof value.id === "string" &&
     value.id.length > 0 &&
     ORDER_STATUSES.some((status) => status === value.status) &&
@@ -96,6 +134,9 @@ function withBenefits(order: OrderWire): Order {
     pointsReversed: order.pointsReversed ?? 0,
     pointsAwardedAt: order.pointsAwardedAt ?? null,
     pointsReversedAt: order.pointsReversedAt ?? null,
+    canCancelImmediately: order.canCancelImmediately ?? false,
+    canRequestCancellation: order.canRequestCancellation ?? false,
+    cancelRequest: order.cancelRequest ?? null,
   };
 }
 
@@ -111,6 +152,8 @@ async function readOrders(
     signal,
     cache: "no-store",
   });
+  if (signal?.aborted || getStoredToken() !== token)
+    throw new DOMException("Tài khoản đã thay đổi.", "AbortError");
   if (!response.ok) {
     if (response.status === 401 && getStoredToken() === token) clearAuth();
     throw new OrderApiError(
@@ -140,4 +183,10 @@ export async function getMyOrder(
   if (!isOrder(data) || data.id !== id)
     throw new Error("Dữ liệu đơn hàng chưa hợp lệ. Vui lòng thử lại.");
   return withBenefits(data);
+}
+
+export function parseOrder(value: unknown): Order {
+  if (!isOrder(value))
+    throw new Error("Dữ liệu đơn hàng chưa hợp lệ. Vui lòng thử lại.");
+  return withBenefits(value);
 }

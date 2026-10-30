@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
 import { VouchersService } from '../vouchers/vouchers.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -22,7 +22,10 @@ import type { CancellationReason } from './order-expiry';
 import { parsePaymentTimeoutMinutes } from './payment-timeout';
 import { priceOrderItems } from './price-order-items';
 import { assertTransition, type OrderStatus } from './order-status';
-import { cancellationAction } from './order-cancellation';
+import {
+  assertNoPendingCancellation,
+  cancellationAction,
+} from './order-cancellation';
 import { Payment } from '../payments/entities/payment.entity';
 import { OrderBenefitsService } from './order-benefits.service';
 import { BENEFITS_POLICY_VERSIONS } from './benefits-policy';
@@ -171,6 +174,24 @@ export class OrdersService {
   ): Promise<Order> {
     if (order.status === 'CANCELLED') return order;
     assertTransition(order.status, 'CANCELLED');
+    await manager.getRepository(Payment).update(
+      { orderId: order.id, status: In(['PENDING', 'CUSTOMER_REPORTED']) },
+      {
+        status: 'FAILED',
+        reviewedAt: now,
+        reviewedBy: null,
+        reviewNote:
+          reason === 'PAYMENT_TIMEOUT'
+            ? 'Đơn đã hết hạn thanh toán.'
+            : 'Đơn đã được hủy.',
+      },
+    );
+    if (order.cancelRequestStatus === 'PENDING') {
+      order.cancelRequestStatus = 'EXPIRED';
+      order.cancelReviewedAt = now;
+      order.cancelReviewedBy = null;
+      order.cancelReviewNote = 'Đơn đã hết hạn thanh toán.';
+    }
     if (!order.inventoryReleasedAt) {
       if (order.inventoryReservedAt) {
         const rows = await manager
@@ -249,6 +270,7 @@ export class OrdersService {
       if (!order)
         throw new BadRequestException(`Đơn hàng ${orderId} không tồn tại`);
       if (await this.expireIfNeeded(order, transaction)) return order;
+      assertNoPendingCancellation(order);
       if (status === 'CANCELLED') {
         return this.cancelLocked(
           order,
@@ -275,6 +297,88 @@ export class OrdersService {
     if (order.status !== status)
       throw new BadRequestException('Đơn đã hết hạn');
     return order;
+  }
+
+  async requestCancellation(
+    userId: string,
+    orderId: string,
+    reason: string,
+  ): Promise<void> {
+    const expired = await this.dataSource.transaction(async (manager) => {
+      const order = await this.lockById(orderId, manager);
+      if (!order || order.userId !== userId)
+        throw new NotFoundException('Không tìm thấy đơn hàng');
+      if (await this.expireIfNeeded(order, manager)) return true;
+      if (order.cancelRequestStatus === 'PENDING') return false;
+      const reported = await manager
+        .getRepository(Payment)
+        .existsBy({ orderId, status: 'CUSTOMER_REPORTED' });
+      if (
+        cancellationAction(
+          order.status,
+          reported,
+          order.cancelRequestStatus,
+        ) !== 'REQUEST'
+      )
+        throw new ConflictException(
+          'Đơn không đủ điều kiện gửi yêu cầu hủy. Vui lòng cập nhật trạng thái.',
+        );
+      Object.assign(order, {
+        cancelRequestId: randomUUID(),
+        cancelRequestedAt: await this.databaseNow(manager),
+        cancelRequestReason: reason.trim(),
+        cancelRequestStatus: 'PENDING',
+        cancelReviewedAt: null,
+        cancelReviewedBy: null,
+        cancelReviewNote: null,
+      });
+      await manager.save(Order, order);
+      return false;
+    });
+    if (expired) throw new ConflictException('Đơn đã hết hạn và được hủy.');
+  }
+
+  async reviewCancellation(
+    adminId: string,
+    orderId: string,
+    requestId: string,
+    decision: 'APPROVED' | 'REJECTED',
+    note?: string,
+  ): Promise<void> {
+    const expired = await this.dataSource.transaction(async (manager) => {
+      const order = await this.lockById(orderId, manager);
+      if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+      if (await this.expireIfNeeded(order, manager)) return true;
+      if (!order.cancelRequestId || order.cancelRequestId !== requestId)
+        throw new ConflictException(
+          'Yêu cầu hủy đã thay đổi. Vui lòng tải lại danh sách.',
+        );
+      if (order.cancelRequestStatus === decision) return false;
+      if (order.cancelRequestStatus !== 'PENDING')
+        throw new ConflictException('Yêu cầu hủy đã được xử lý.');
+      if (!['PENDING', 'PAYMENT_FAILED', 'PAID'].includes(order.status))
+        throw new ConflictException('Đơn không còn được phép hủy.');
+      if (decision === 'REJECTED' && !note?.trim())
+        throw new BadRequestException('Cần nhập lý do từ chối.');
+      if (decision === 'APPROVED' && order.status === 'PAID' && !note?.trim())
+        throw new BadRequestException(
+          'Cần ghi chú xử lý tiền của đơn đã thanh toán. Hệ thống không tự hoàn tiền.',
+        );
+      order.cancelRequestStatus = decision;
+      order.cancelReviewedAt = await this.databaseNow(manager);
+      order.cancelReviewedBy = adminId;
+      order.cancelReviewNote = note?.trim() || null;
+      await manager.save(Order, order);
+      if (decision === 'APPROVED')
+        await this.cancelLocked(
+          order,
+          manager,
+          'USER_CANCELLED',
+          await this.databaseNow(manager),
+        );
+      return false;
+    });
+    if (expired) throw new ConflictException('Đơn đã hết hạn và được hủy.');
   }
 
   /** One transaction per order keeps row/ingredient lock ordering consistent across workers. */

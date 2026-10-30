@@ -12,6 +12,7 @@ import {
 } from "@/lib/orderUtils";
 import { OrderApiError } from "@/lib/orders/history";
 import OrderRewards from "./OrderRewards";
+import OrderCancellation from "./OrderCancellation";
 
 export const primaryButton =
   "inline-flex min-h-11 items-center justify-center rounded-full bg-amber-800 px-5 py-2 text-center text-sm font-semibold text-white hover:bg-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-800 disabled:opacity-50";
@@ -113,6 +114,12 @@ export function PaymentAction({
   order: Order;
   serverNow: number;
 }) {
+  if (order.cancelRequest?.status === "PENDING")
+    return (
+      <p className="text-sm font-semibold text-amber-900">
+        Thanh toán tạm dừng trong khi chờ duyệt hủy.
+      </p>
+    );
   if (canPay(order, serverNow))
     return (
       <div className="flex flex-wrap items-center gap-3">
@@ -177,6 +184,7 @@ export function OrderCard({
           <OrderRewards order={order} compact />
         </div>
       </div>
+      <OrderCancellation order={order} serverNow={serverNow} />
       {(order.status === "PENDING" || order.status === "PAYMENT_FAILED") && (
         <div className="mt-4">
           <PaymentAction order={order} serverNow={serverNow} />

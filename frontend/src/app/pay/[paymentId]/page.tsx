@@ -18,7 +18,8 @@ import {
   removeAttempt,
 } from "@/lib/payments/storage";
 import { useCart } from "@/store/useCart";
-import { useOrderClock } from "@/hooks/useOrderHistory";
+import { useOrderClock, useOwnOrder } from "@/hooks/useOrderHistory";
+import OrderCancellation from "@/components/orders/OrderCancellation";
 import { useAuth } from "@/hooks/useAuth";
 import { getStoredToken } from "@/lib/auth";
 import { useHydrated } from "@/hooks/useHydrated";
@@ -84,6 +85,9 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
   const [busy, setBusy] = useState(false);
   const [receivedAt, setReceivedAt] = useState(0);
   const now = useOrderClock(details?.serverTime, receivedAt);
+  const ownOrder = useOwnOrder(details?.orderId ?? "");
+  const cancellationPending =
+    ownOrder.data?.cancelRequest?.status === "PENDING";
   const { token } = useAuth();
   const mounted = useRef(true);
   const [appUrl, setAppUrl] = useState("");
@@ -183,6 +187,7 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
       !token
     )
       return;
+    if (cancellationPending) return;
     setBusy(true);
     setActionError("");
     try {
@@ -239,7 +244,7 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
       </p>
     );
 
-  if (details.status === "FAILED") {
+  if (details.status === "FAILED" && !orderClosed) {
     return (
       <section className="mx-auto max-w-xl px-4 py-12 text-center">
         <div className="rounded-3xl border border-red-200 bg-white p-8 shadow-sm">
@@ -258,6 +263,9 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
           <p className="mt-3 text-stone-600">
             Giỏ hàng của bạn vẫn được giữ nguyên.
           </p>
+          {ownOrder.data && !ownOrder.isError && (
+            <OrderCancellation order={ownOrder.data} serverNow={now} />
+          )}
           {!orderClosed && (remaining === null || remaining > 0) && (
             <button
               type="button"
@@ -288,7 +296,7 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
             Đơn hàng đã hết hạn hoặc bị hủy
           </h1>
           <p className="mt-3 text-stone-600">
-            Giỏ hàng của bạn vẫn được giữ nguyên, vui lòng đặt lại.
+            Bạn có thể về giỏ hàng để kiểm tra và chỉnh sửa các món đang có.
           </p>
           <Link
             href="/cart"
@@ -409,7 +417,12 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
               type="button"
               onClick={() => void handleReportPaid()}
               disabled={
-                busy || needsLogin || (remaining !== null && remaining <= 0)
+                busy ||
+                needsLogin ||
+                cancellationPending ||
+                ownOrder.isPending ||
+                ownOrder.isError ||
+                (remaining !== null && remaining <= 0)
               }
               className="mt-7 w-full rounded-xl bg-amber-800 px-4 py-3 font-bold text-white hover:bg-amber-900 disabled:opacity-50"
             >
@@ -424,6 +437,13 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
           >
             Đang chờ nhân viên xác nhận thanh toán tại quầy…
           </p>
+        )}
+        {ownOrder.data && !ownOrder.isError && (
+          <OrderCancellation
+            order={ownOrder.data}
+            serverNow={now}
+            disabled={busy}
+          />
         )}
 
         {error && (

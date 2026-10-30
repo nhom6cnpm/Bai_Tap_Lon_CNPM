@@ -13,6 +13,7 @@ import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { OrderHistoryService } from './order-history.service';
+import { RequestCancellationDto } from './dto/cancellation.dto';
 
 interface AuthenticatedRequest {
   user: { userId: string; email: string };
@@ -42,6 +43,21 @@ export class OrdersController {
   @HttpCode(200)
   cancel(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.ordersService.cancelOrder(req.user.userId, id);
+  }
+
+  @Post(':id/cancel-request')
+  @HttpCode(200)
+  async requestCancellation(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: RequestCancellationDto,
+  ) {
+    await this.ordersService.requestCancellation(
+      req.user.userId,
+      id,
+      dto.reason,
+    );
+    return this.history.findOwnById(req.user.userId, id);
   }
 
   @Post()

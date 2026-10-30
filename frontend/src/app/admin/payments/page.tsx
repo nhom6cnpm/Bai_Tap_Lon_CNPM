@@ -208,6 +208,24 @@ function AdminPaymentsBoard() {
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-8">
+      <nav
+        aria-label="Quản trị"
+        className="mb-6 flex flex-wrap gap-3 text-sm font-semibold"
+      >
+        <Link
+          href="/admin/payments"
+          aria-current="page"
+          className="rounded-full bg-amber-100 px-4 py-2 text-amber-900"
+        >
+          Thanh toán
+        </Link>
+        <Link
+          href="/admin/orders"
+          className="rounded-full border border-stone-200 px-4 py-2"
+        >
+          Đơn hàng
+        </Link>
+      </nav>
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-amber-800">
@@ -367,12 +385,24 @@ function AdminPaymentsBoard() {
                       Ghi chú: {row.reviewNote}
                     </p>
                   )}
+                  {row.cancellationPending && (
+                    <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+                      Đơn đang chờ duyệt hủy.{" "}
+                      <Link
+                        href="/admin/orders"
+                        className="font-semibold underline"
+                      >
+                        Xử lý yêu cầu hủy
+                      </Link>{" "}
+                      trước khi xác nhận hoặc từ chối thanh toán.
+                    </p>
+                  )}
                   {active && (
                     <div className="mt-4 flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => handleConfirm(row)}
-                        disabled={busy}
+                        disabled={busy || row.cancellationPending}
                         className="rounded-xl bg-green-700 px-4 py-2 text-sm font-semibold text-white hover:bg-green-800 disabled:opacity-50"
                       >
                         {busy && review.variables?.decision === "confirm"
@@ -382,7 +412,7 @@ function AdminPaymentsBoard() {
                       <button
                         type="button"
                         onClick={() => handleReject(row)}
-                        disabled={busy}
+                        disabled={busy || row.cancellationPending}
                         className="rounded-xl border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50 disabled:opacity-50"
                       >
                         {busy && review.variables?.decision === "reject"

@@ -2,7 +2,10 @@ import type { CancellationReason } from '../order-expiry';
 import type { OrderStatus } from '../order-status';
 import type { ProductSize, ToppingId } from '../pricing';
 import type { PaymentMethod } from '../../payments/entities/payment.entity';
-import type { OrderBenefitsResponseDto } from './order-workflow-response.dto';
+import type {
+  CancellationCapabilitiesDto,
+  OrderBenefitsResponseDto,
+} from './order-workflow-response.dto';
 
 export interface OrderHistoryItemDto {
   id: string;
@@ -16,7 +19,8 @@ export interface OrderHistoryItemDto {
   lineTotal: number;
 }
 
-export interface OrderHistoryResponseDto extends OrderBenefitsResponseDto {
+export interface OrderHistoryResponseDto
+  extends OrderBenefitsResponseDto, CancellationCapabilitiesDto {
   id: string;
   status: OrderStatus;
   total: number;

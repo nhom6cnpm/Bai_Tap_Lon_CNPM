@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useOrderClock, useOwnOrder } from "@/hooks/useOrderHistory";
 import { formatDate, orderStatusLabel } from "@/lib/orderUtils";
 import OrderRewards from "./OrderRewards";
+import OrderCancellation from "./OrderCancellation";
 import { useOrderRewardsSync } from "@/hooks/useRewardsProfile";
 import {
   LoginPrompt,
@@ -26,7 +27,7 @@ export function OrderDetail({
   id: string;
   confirmation?: boolean;
 }) {
-  const query = useOwnOrder(id, confirmation ? false : 3_000);
+  const query = useOwnOrder(id);
   const router = useRouter();
   const order = query.data;
   useOrderRewardsSync(order && !query.isError ? [order] : []);
@@ -64,7 +65,7 @@ export function OrderDetail({
         <OrderLoading />
       ) : !query.authenticated ? (
         <LoginPrompt returnTo={returnTo} />
-      ) : query.isPending || (confirmation && query.isFetching) ? (
+      ) : query.isPending ? (
         <OrderLoading />
       ) : query.isError ? (
         <OrderError
@@ -124,6 +125,11 @@ export function OrderDetail({
                 </p>
               </div>
               <aside className="min-w-0 space-y-4">
+                <OrderCancellation
+                  order={order}
+                  serverNow={now}
+                  disabled={query.isFetching}
+                />
                 <div className="rounded-2xl border border-stone-200 bg-white p-5">
                   <h2 className="font-bold text-stone-900">
                     Trạng thái đơn hàng

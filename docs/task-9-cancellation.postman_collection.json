@@ -1,0 +1,92 @@
+{
+  "info": {
+    "name": "BrewLite - Task 9 cancellation review",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3001" },
+    { "key": "customerToken", "value": "<CUSTOMER_JWT>" },
+    { "key": "adminToken", "value": "<ADMIN_JWT>" },
+    { "key": "orderId", "value": "<ORDER_ID>" },
+    { "key": "requestId", "value": "<REQUEST_UUID_FROM_ORDER>" }
+  ],
+  "item": [
+    {
+      "name": "Customer - read own order and cancellation capabilities",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customerToken}}" }
+        ],
+        "url": "{{baseUrl}}/orders/{{orderId}}"
+      }
+    },
+    {
+      "name": "Customer - cancel immediately (unreported unpaid only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/orders/{{orderId}}/cancel",
+        "body": { "mode": "raw", "raw": "{}" }
+      }
+    },
+    {
+      "name": "Customer - request cancellation (reported or PAID)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{customerToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/orders/{{orderId}}/cancel-request",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"reason\": \"Đổi kế hoạch nhận món\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Staff - list all pending cancellation requests",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "url": "{{baseUrl}}/admin/orders?cancelRequestStatus=PENDING"
+      }
+    },
+    {
+      "name": "Staff - approve cancellation (PAID needs a money handling note)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/admin/orders/{{orderId}}/cancel",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"note\": \"Đã ghi nhận cần đối chiếu tiền tại quầy, hệ thống không tự hoàn tiền\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Staff - reject cancellation with a reason",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/admin/orders/{{orderId}}/cancel-request/reject",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"reason\": \"Khách xác nhận tiếp tục nhận món\"\n}"
+        }
+      }
+    }
+  ]
+}

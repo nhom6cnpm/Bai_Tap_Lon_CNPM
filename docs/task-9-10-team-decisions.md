@@ -181,4 +181,7 @@ có thể làm vượt hạn mức mới. Nếu cần tính cả lịch sử, ph
 
 [Bước 1 đã triển khai trên nhánh riêng](task-10-benefits-foundation.md): cấu trúc
 dữ liệu và siết hủy trực tiếp. [Bước 2 backend lượt voucher/điểm](task-10-voucher-points.md)
-đã bật đầy đủ transaction cho đơn mới trên nhánh riêng. Chưa cập nhật giao diện/Docker.
+đã bật đầy đủ transaction cho đơn mới trên nhánh riêng.
+[Bước 3 giao diện voucher/điểm](task-10-voucher-points-ui.md) và
+[bước 4 hủy/yêu cầu/duyệt hủy](task-9-cancellation-review.md) đã hoàn thành trên
+nhánh riêng. Chưa cập nhật Docker/database chính với các bước mới này.

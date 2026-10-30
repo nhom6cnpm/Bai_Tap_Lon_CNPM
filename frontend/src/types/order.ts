@@ -31,7 +31,22 @@ export interface OrderBenefits {
   pointsReversedAt: string | null;
 }
 
-export interface Order extends OrderBenefits {
+export interface CancelRequest {
+  id: string;
+  status: "PENDING" | "APPROVED" | "REJECTED" | "EXPIRED";
+  reason: string;
+  requestedAt: string;
+  reviewedAt: string | null;
+  reviewedBy: string | null;
+  reviewNote: string | null;
+}
+export interface OrderCancellation {
+  canCancelImmediately: boolean;
+  canRequestCancellation: boolean;
+  cancelRequest: CancelRequest | null;
+}
+
+export interface Order extends OrderBenefits, OrderCancellation {
   id: string;
   status: OrderStatus;
   total: number;

@@ -15,6 +15,7 @@ import {
   type FindOptionsWhere,
 } from 'typeorm';
 import { OrdersService } from '../orders/orders.service';
+import { assertNoPendingCancellation } from '../orders/order-cancellation';
 import { Order } from '../orders/order.entity';
 import type { OrderStatus } from '../orders/order-status';
 import { User } from '../auth/user.entity';
@@ -61,6 +62,7 @@ export class PaymentsService {
       status: payment.status,
       reportedAt: payment.reportedAt ?? null,
       reviewNote: payment.reviewNote ?? null,
+      cancellationPending: order?.cancelRequestStatus === 'PENDING',
       createdAt: payment.createdAt,
       orderStatus: order?.status ?? null,
       expiresAt: order?.expiresAt ?? null,
@@ -155,6 +157,7 @@ export class PaymentsService {
           throw new BadRequestException(
             'Đơn hàng này không còn chờ thanh toán',
           );
+        assertNoPendingCancellation(order);
         let payment = await repository.findOne({
           where: {
             orderId: order.id,
@@ -253,6 +256,7 @@ export class PaymentsService {
         throw new BadRequestException('Phiên thanh toán không còn chờ xử lý');
       if (payment.status === 'CUSTOMER_REPORTED')
         return this.toView(payment, order);
+      assertNoPendingCancellation(order);
       payment.status = 'CUSTOMER_REPORTED';
       payment.reportedAt = await this.ordersService.databaseNow(manager);
       return this.toView(
@@ -380,13 +384,14 @@ export class PaymentsService {
 
     const result = await this.dataSource.transaction(async (manager) => {
       const { payment, order } = await this.lockPair(manager, paymentId);
-      if (!ACTIVE_PAYMENT_STATUSES.includes(payment.status))
-        return this.toView(payment, order);
       if (
         (await this.ordersService.expireIfNeeded(order, manager)) ||
         order.status === 'CANCELLED'
       )
         return null;
+      assertNoPendingCancellation(order);
+      if (!ACTIVE_PAYMENT_STATUSES.includes(payment.status))
+        return this.toView(payment, order);
       if (order.status !== 'PENDING')
         throw new BadRequestException('Đơn không còn chờ xác nhận thanh toán');
       const updated = await this.ordersService.updateOrderStatus(

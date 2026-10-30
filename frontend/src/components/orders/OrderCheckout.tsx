@@ -1,6 +1,7 @@
 "use client";
 import PriceSummary from "@/components/PriceSummary";
 import OrderRewards from "./OrderRewards";
+import OrderCancellation from "./OrderCancellation";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -156,15 +157,24 @@ export function OrderCheckout({ id }: { id: string }) {
         </p>
         <PriceSummary totals={order} />
         <OrderRewards order={order} compact />
+        <OrderCancellation
+          order={order}
+          serverNow={now}
+          disabled={pending || query.isFetching}
+        />
         <p
           role="status"
           className={`mt-4 text-sm font-semibold ${payable ? "text-stone-600" : "text-red-700"}`}
         >
-          {payable
-            ? `Vui lòng thanh toán trong ${formatRemaining(Date.parse(order.expiresAt) - now)}`
-            : ["PENDING", "PAYMENT_FAILED", "CANCELLED"].includes(order.status)
-              ? "Đơn đã hết hạn hoặc đã bị hủy. Vui lòng xem lại đơn hàng."
-              : orderStatusLabel(order)}
+          {order.cancelRequest?.status === "PENDING"
+            ? "Thanh toán tạm dừng trong khi chờ nhân viên duyệt hủy."
+            : payable
+              ? `Vui lòng thanh toán trong ${formatRemaining(Date.parse(order.expiresAt) - now)}`
+              : ["PENDING", "PAYMENT_FAILED", "CANCELLED"].includes(
+                    order.status,
+                  )
+                ? "Đơn đã hết hạn hoặc đã bị hủy. Vui lòng xem lại đơn hàng."
+                : orderStatusLabel(order)}
         </p>
         {payable && (
           <fieldset disabled={pending} className="mt-6">

@@ -12,6 +12,7 @@ import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { VouchersModule } from '../vouchers/vouchers.module';
 import { OrderBenefitsService } from './order-benefits.service';
+import { AdminOrdersController } from './admin-orders.controller';
 
 @Module({
   imports: [
@@ -25,7 +26,7 @@ import { OrderBenefitsService } from './order-benefits.service';
     InventoryModule,
     VouchersModule,
   ],
-  controllers: [OrdersController],
+  controllers: [OrdersController, AdminOrdersController],
   providers: [
     OrdersService,
     OrderExpiryService,

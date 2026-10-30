@@ -372,7 +372,7 @@ describeDatabase(
             .getRepository(Payment)
             .findOneByOrFail({ id: payment.paymentId })
         ).status,
-      ).toBe('PENDING');
+      ).toBe('FAILED');
     });
 
     it('serializes a staff decision racing with expiry so a cancelled order cannot become PAID', async () => {
@@ -1674,6 +1674,410 @@ describeDatabase(
         );
         expect((await stock()).version).toBe(
           final.status === 'CANCELLED' ? 3 : 2,
+        );
+      });
+    });
+
+    describe('customer and staff cancellation workflow', () => {
+      const own = (id: string, bearer = token) =>
+        request(app.getHttpServer())
+          .get(`/orders/${id}`)
+          .set('Authorization', `Bearer ${bearer}`);
+      const ask = (id: string, reason = 'Đổi kế hoạch', bearer = token) =>
+        request(app.getHttpServer())
+          .post(`/orders/${id}/cancel-request`)
+          .set('Authorization', `Bearer ${bearer}`)
+          .send({ reason });
+      const approve = (
+        id: string,
+        requestId: string,
+        note?: string,
+        bearer = adminToken,
+      ) =>
+        request(app.getHttpServer())
+          .post(`/admin/orders/${id}/cancel`)
+          .set('Authorization', `Bearer ${bearer}`)
+          .send({ requestId, ...(note ? { note } : {}) });
+      const reject = (
+        id: string,
+        requestId: string,
+        reason = 'Đã đối chiếu, xin tiếp tục đơn',
+      ) =>
+        request(app.getHttpServer())
+          .post(`/admin/orders/${id}/cancel-request/reject`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ requestId, reason });
+      const open = async (paid = false, voucher = false) => {
+        if (voucher)
+          await database.getRepository(Voucher).save({
+            code: 'CANCEL5K',
+            title: 'Cancellation fixture',
+            discountType: 'FIXED',
+            discountValue: 5000,
+            minSubtotal: 0,
+            maxDiscount: null,
+            maxUsesPerUser: 3,
+            startsAt: new Date(Date.now() - 86400000),
+            endsAt: new Date(Date.now() + 86400000),
+            isActive: true,
+            isPublic: true,
+          });
+        const order = await orders.createOrder(userId, {
+          items: [item()],
+          ...(voucher ? { voucherCode: 'CANCEL5K' } : {}),
+        });
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: order.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.reportPaid(userId, payment.paymentId);
+        if (paid) await staffReview(payment.paymentId);
+        return { order, payment };
+      };
+
+      it('reports capabilities from current payment/deadline and prevents requests for immediately cancellable or foreign orders', async () => {
+        const created = await create();
+        expect((await own(created.orderId).expect(200)).body).toMatchObject({
+          canCancelImmediately: true,
+          canRequestCancellation: false,
+          cancelRequest: null,
+        });
+        await ask(created.orderId).expect(409);
+        await ask(created.orderId, 'Other account', adminToken).expect(404);
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: created.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        expect((await own(created.orderId)).body.canCancelImmediately).toBe(
+          true,
+        );
+        await payments.reportPaid(userId, payment.paymentId);
+        expect((await own(created.orderId)).body).toMatchObject({
+          canCancelImmediately: false,
+          canRequestCancellation: true,
+        });
+        await expire(created.orderId);
+        expect((await own(created.orderId)).body).toMatchObject({
+          canCancelImmediately: false,
+          canRequestCancellation: false,
+        });
+      });
+
+      it('creates one pending request for concurrent submissions, blocks payment actions and leaves its deadline and benefits reserved', async () => {
+        const { order, payment } = await open(false, true);
+        const responses = await Promise.all([
+          ask(order.orderId),
+          ask(order.orderId, 'Second reason'),
+        ]);
+        responses.forEach((response) => expect(response.status).toBe(200));
+        expect(responses[0].body.cancelRequest).toEqual(
+          responses[1].body.cancelRequest,
+        );
+        const stored = await getOrder(order.orderId);
+        expect(stored.expiresAt.getTime()).toBe(order.expiresAt.getTime());
+        expect((await own(order.orderId)).body).toMatchObject({
+          status: 'PENDING',
+          canPay: false,
+          canCancelImmediately: false,
+          canRequestCancellation: false,
+        });
+        for (const decision of ['CONFIRM', 'REJECT'] as const)
+          await expect(
+            payments.review(adminId, payment.paymentId, decision),
+          ).rejects.toThrow('Đơn đang chờ duyệt hủy');
+        await expect(
+          payments.createPayment(
+            userId,
+            { orderId: order.orderId, method: 'CARD' },
+            randomUUID(),
+          ),
+        ).rejects.toThrow('Đơn đang chờ duyệt hủy');
+        await expect(
+          orders.cancelOrder(userId, order.orderId),
+        ).rejects.toThrow();
+        expect((await stock()).quantity).toBe(980);
+        expect(
+          (
+            await database
+              .getRepository(VoucherUsage)
+              .findOneByOrFail({ orderId: order.orderId })
+          ).status,
+        ).toBe('RESERVED');
+        const list = await request(app.getHttpServer())
+          .get('/admin/orders?cancelRequestStatus=PENDING')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200);
+        expect(list.body.map((row: { id: string }) => row.id)).toEqual([
+          order.orderId,
+        ]);
+      });
+
+      it('requires staff privileges and validates reason/request identifiers without exposing other customers', async () => {
+        const { order } = await open();
+        await ask(order.orderId, '   ').expect(400);
+        await ask(order.orderId, 'x'.repeat(501)).expect(400);
+        const result = await ask(order.orderId, '  Cần đổi lịch  ').expect(200);
+        expect(result.body.cancelRequest.reason).toBe('Cần đổi lịch');
+        await request(app.getHttpServer()).get('/admin/orders').expect(401);
+        await request(app.getHttpServer())
+          .get('/admin/orders')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(403);
+        await request(app.getHttpServer())
+          .get('/admin/orders?cancelRequestStatus=ALL')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(400);
+        await approve(
+          order.orderId,
+          result.body.cancelRequest.id,
+          undefined,
+          token,
+        ).expect(403);
+        await approve(order.orderId, 'bad-id').expect(400);
+        await approve(order.orderId, randomUUID()).expect(409);
+        await reject(order.orderId, result.body.cancelRequest.id, ' ').expect(
+          400,
+        );
+        expect((await getOrder(order.orderId)).cancelRequestStatus).toBe(
+          'PENDING',
+        );
+      });
+
+      it('rejects with a visible reason, repeats safely and prevents stale staff actions after a new request', async () => {
+        const { order, payment } = await open();
+        const first = (await ask(order.orderId).expect(200)).body.cancelRequest;
+        const rejected = await reject(order.orderId, first.id).expect(200);
+        expect(rejected.body).toMatchObject({
+          status: 'PENDING',
+          canPay: true,
+          canRequestCancellation: true,
+          cancelRequest: {
+            status: 'REJECTED',
+            reviewedBy: adminId,
+            reviewNote: 'Đã đối chiếu, xin tiếp tục đơn',
+          },
+        });
+        const repeated = await reject(
+          order.orderId,
+          first.id,
+          'Must not overwrite',
+        ).expect(200);
+        expect(repeated.body.cancelRequest).toEqual(
+          rejected.body.cancelRequest,
+        );
+        const second = (await ask(order.orderId, 'Yêu cầu mới').expect(200))
+          .body.cancelRequest;
+        expect(second.id).not.toBe(first.id);
+        await approve(order.orderId, first.id).expect(409);
+        await reject(order.orderId, first.id).expect(409);
+        await reject(order.orderId, second.id).expect(200);
+        await staffReview(payment.paymentId);
+        expect((await getOrder(order.orderId)).status).toBe('PAID');
+      });
+
+      it('approves an unpaid request once, closes payment and releases inventory and voucher exactly once', async () => {
+        const { order, payment } = await open(false, true);
+        const pending = (await ask(order.orderId)).body.cancelRequest;
+        const results = await Promise.all([
+          approve(order.orderId, pending.id),
+          approve(order.orderId, pending.id),
+        ]);
+        results.forEach((result) => expect(result.status).toBe(200));
+        expect(results[0].body.cancelRequest).toEqual(
+          results[1].body.cancelRequest,
+        );
+        expect((await getOrder(order.orderId)).cancelRequestStatus).toBe(
+          'APPROVED',
+        );
+        expect((await stock()).quantity).toBe(1000);
+        expect((await stock()).version).toBe(3);
+        expect(
+          (
+            await database
+              .getRepository(Payment)
+              .findOneByOrFail({ id: payment.paymentId })
+          ).status,
+        ).toBe('FAILED');
+        expect(
+          (
+            await database
+              .getRepository(VoucherUsage)
+              .findOneByOrFail({ orderId: order.orderId })
+          ).status,
+        ).toBe('RELEASED');
+        await expect(
+          payments.reportPaid(userId, payment.paymentId),
+        ).rejects.toThrow();
+        await expect(staffReview(payment.paymentId)).rejects.toThrow();
+        expect(await orders.expireUnpaidOrders()).toBe(0);
+      });
+
+      it('requires a money handling note for PAID cancellation and keeps the successful payment and price snapshot', async () => {
+        const { order, payment } = await open(true, true);
+        const paid = await getOrder(order.orderId);
+        expect(paid.pointsEarned).toBe(3);
+        const pending = (await ask(order.orderId)).body.cancelRequest;
+        await approve(order.orderId, pending.id).expect(400);
+        await approve(
+          order.orderId,
+          pending.id,
+          'Đã ghi nhận cần đối chiếu tiền tại quầy',
+        ).expect(200);
+        await approve(order.orderId, pending.id, 'Repeated action').expect(200);
+        const cancelled = await getOrder(order.orderId);
+        expect(cancelled).toMatchObject({
+          status: 'CANCELLED',
+          pointsEarned: 0,
+          pointsReversed: 3,
+          cancelRequestStatus: 'APPROVED',
+          cancelReviewedBy: adminId,
+          cancelReviewNote: 'Đã ghi nhận cần đối chiếu tiền tại quầy',
+          subtotal: paid.subtotal,
+          total: paid.total,
+          discount: paid.discount,
+          voucherCode: paid.voucherCode,
+        });
+        expect(
+          (await database.getRepository(User).findOneByOrFail({ id: userId }))
+            .loyaltyPoints,
+        ).toBe(0);
+        expect(
+          (
+            await database
+              .getRepository(Payment)
+              .findOneByOrFail({ id: payment.paymentId })
+          ).status,
+        ).toBe('SUCCESS');
+        expect(
+          (
+            await database
+              .getRepository(VoucherUsage)
+              .findOneByOrFail({ orderId: order.orderId })
+          ).status,
+        ).toBe('RELEASED');
+        expect((await stock()).version).toBe(3);
+      });
+
+      it('rolls back approval metadata, stock, usage and status when reward reversal fails', async () => {
+        const { order } = await open(true, true);
+        const pending = (await ask(order.orderId)).body.cancelRequest;
+        await database.getRepository(User).update(userId, { loyaltyPoints: 0 });
+        await approve(order.orderId, pending.id, 'Đối chiếu tại quầy').expect(
+          409,
+        );
+        expect(await getOrder(order.orderId)).toMatchObject({
+          status: 'PAID',
+          cancelRequestStatus: 'PENDING',
+          cancelReviewedAt: null,
+          pointsEarned: 3,
+        });
+        expect((await stock()).quantity).toBe(980);
+        expect((await stock()).version).toBe(2);
+        expect(
+          (
+            await database
+              .getRepository(VoucherUsage)
+              .findOneByOrFail({ orderId: order.orderId })
+          ).status,
+        ).toBe('USED');
+      });
+
+      it('expires reported unpaid requests automatically, closes them as EXPIRED and rejects stale reviews without another refund', async () => {
+        const { order, payment } = await open(false, true);
+        const pending = (await ask(order.orderId)).body.cancelRequest;
+        await expire(order.orderId);
+        await approve(order.orderId, pending.id).expect(409);
+        const expired = await getOrder(order.orderId);
+        expect(expired).toMatchObject({
+          status: 'CANCELLED',
+          cancelReason: 'PAYMENT_TIMEOUT',
+          cancelRequestStatus: 'EXPIRED',
+          cancelReviewedBy: null,
+        });
+        expect(expired.cancelReviewedAt).toBeInstanceOf(Date);
+        expect(
+          (
+            await database
+              .getRepository(Payment)
+              .findOneByOrFail({ id: payment.paymentId })
+          ).status,
+        ).toBe('FAILED');
+        expect((await stock()).quantity).toBe(1000);
+        await reject(order.orderId, pending.id).expect(409);
+        await orders.expireUnpaidOrders();
+        expect((await stock()).version).toBe(3);
+      });
+
+      it('commits timeout cancellation before returning a request error and does not time out PAID requests', async () => {
+        const { order } = await open();
+        await expire(order.orderId);
+        await ask(order.orderId).expect(409);
+        expect((await getOrder(order.orderId)).status).toBe('CANCELLED');
+        const paid = await open(true);
+        await expire(paid.order.orderId);
+        await ask(paid.order.orderId).expect(200);
+        await orders.expireUnpaidOrders();
+        expect((await getOrder(paid.order.orderId)).status).toBe('PAID');
+      });
+
+      it('serializes a payment confirmation racing a request without losing the pending request', async () => {
+        const { order, payment } = await open();
+        const results = await Promise.allSettled([
+          payments.review(adminId, payment.paymentId, 'CONFIRM'),
+          orders.requestCancellation(userId, order.orderId, 'Race request'),
+        ]);
+        expect(results[1].status).toBe('fulfilled');
+        const current = await getOrder(order.orderId);
+        expect(current.cancelRequestStatus).toBe('PENDING');
+        expect(['PENDING', 'PAID']).toContain(current.status);
+        expect(current.status === 'PAID').toBe(
+          results[0].status === 'fulfilled',
+        );
+        await expect(
+          payments.review(adminId, payment.paymentId, 'REJECT'),
+        ).rejects.toThrow();
+      });
+
+      it('serializes preparation against cancellation requests and refuses requests after preparation', async () => {
+        const { order } = await open(true);
+        const results = await Promise.allSettled([
+          orders.updateOrderStatus(order.orderId, 'PREPARING'),
+          orders.requestCancellation(userId, order.orderId, 'Race preparing'),
+        ]);
+        expect(
+          results.filter((entry) => entry.status === 'fulfilled'),
+        ).toHaveLength(1);
+        const current = await getOrder(order.orderId);
+        if (current.status === 'PAID') {
+          expect(current.cancelRequestStatus).toBe('PENDING');
+          await reject(order.orderId, current.cancelRequestId!).expect(200);
+          await orders.updateOrderStatus(order.orderId, 'PREPARING');
+        }
+        await ask(order.orderId).expect(409);
+        expect((await own(order.orderId)).body).toMatchObject({
+          canCancelImmediately: false,
+          canRequestCancellation: false,
+        });
+      });
+
+      it('allows only one of competing approve/reject decisions, and keeps the winning review immutable', async () => {
+        const { order } = await open();
+        const pending = (await ask(order.orderId)).body.cancelRequest;
+        const results = await Promise.all([
+          approve(order.orderId, pending.id),
+          reject(order.orderId, pending.id),
+        ]);
+        expect(
+          results.map((entry) => entry.status).sort((a, b) => a - b),
+        ).toEqual([200, 409]);
+        const current = await getOrder(order.orderId);
+        expect(current.status).toBe(
+          current.cancelRequestStatus === 'APPROVED' ? 'CANCELLED' : 'PENDING',
+        );
+        expect((await stock()).quantity).toBe(
+          current.status === 'CANCELLED' ? 1000 : 980,
         );
       });
     });

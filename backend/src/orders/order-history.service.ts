@@ -10,6 +10,7 @@ import { User } from '../auth/user.entity';
 import { Payment } from '../payments/entities/payment.entity';
 import { Order } from './order.entity';
 import type { OrderHistoryResponseDto } from './dto/order-history-response.dto';
+import { cancellationCapabilities } from './order-cancellation';
 
 @Injectable()
 export class OrderHistoryService {
@@ -51,7 +52,7 @@ export class OrderHistoryService {
 
   private async toResponses(
     orders: Order[],
-    userId: string,
+    userId?: string,
   ): Promise<OrderHistoryResponseDto[]> {
     if (!orders.length) return [];
     const [clock, payments] = await Promise.all([
@@ -59,7 +60,10 @@ export class OrderHistoryService {
         'SELECT clock_timestamp() AS now',
       ),
       this.payments.find({
-        where: { orderId: In(orders.map((order) => order.id)), userId },
+        where: {
+          orderId: In(orders.map((order) => order.id)),
+          ...(userId ? { userId } : {}),
+        },
         order: { createdAt: 'DESC', id: 'DESC' },
       }),
     ]);
@@ -71,6 +75,11 @@ export class OrderHistoryService {
       const payment =
         candidates.find((entry) => entry.status === 'SUCCESS') ?? candidates[0];
       return {
+        ...cancellationCapabilities(
+          order,
+          candidates.some((entry) => entry.status === 'CUSTOMER_REPORTED'),
+          now,
+        ),
         id: order.id,
         status: order.status,
         total: order.total,
@@ -91,6 +100,7 @@ export class OrderHistoryService {
         serverTime: now,
         canPay:
           ['PENDING', 'PAYMENT_FAILED'].includes(order.status) &&
+          order.cancelRequestStatus !== 'PENDING' &&
           order.expiresAt > now,
         items: [...order.items]
           .sort((a, b) => a.id.localeCompare(b.id, 'en', { numeric: true }))
@@ -109,5 +119,25 @@ export class OrderHistoryService {
           })),
       };
     });
+  }
+
+  async findCancellationRequests(
+    status: 'PENDING',
+  ): Promise<OrderHistoryResponseDto[]> {
+    const orders = await this.orders.find({
+      where: { cancelRequestStatus: status },
+      relations: { items: true },
+      order: { cancelRequestedAt: 'ASC', id: 'ASC' },
+    });
+    return this.toResponses(orders);
+  }
+
+  async findForAdminById(id: string): Promise<OrderHistoryResponseDto> {
+    const order = await this.orders.findOne({
+      where: { id },
+      relations: { items: true },
+    });
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    return (await this.toResponses([order]))[0];
   }
 }

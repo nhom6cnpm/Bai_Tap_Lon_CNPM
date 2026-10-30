@@ -10,7 +10,7 @@ Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integra
 Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`.
 Bản Docker đang chạy từ nhánh `feature/task-9-staff-payment-integration`, đã ghép
 Task 9/10c/d và voucher với thanh toán nhân viên mới. Code đang phát triển ở nhánh
-`feature/task-10-voucher-points-ui`. Các nhánh cũ vẫn được giữ;
+`feature/task-9-cancellation-review`. Các nhánh cũ vẫn được giữ;
 [ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
 
 **Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
@@ -33,6 +33,10 @@ trên `feature/task-10-voucher-points`; giữ/chốt/trả lượt và điểm t
 [Giao diện số lượt voucher và cập nhật điểm](docs/task-10-voucher-points-ui.md)
 đã hoàn thành trên `feature/task-10-voucher-points-ui`. Bản Docker/database đang
 chạy vẫn ở bản tích hợp thanh toán nhân viên; cập nhật môi trường ở bước bàn giao.
+
+[Bước 4 — hủy ngay/yêu cầu hủy và nhân viên duyệt](docs/task-9-cancellation-review.md)
+đã hoàn thành trên `feature/task-9-cancellation-review`, kế thừa các bước voucher/điểm.
+Có giao diện khách và `/admin/orders`; bảng pha chế thuộc bước tiếp theo.
 
 **Bản tích hợp mới nhất (30/10/2026):** nhánh `feature/task-9-staff-payment-integration`
 đã ghép main `61f4474` (PR #30). [Luồng nhân viên xác nhận, thời hạn 15 phút và cách chạy thử](docs/staff-payment-integration.md).
