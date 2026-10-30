@@ -8,9 +8,9 @@ Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integra
 [kết quả kiểm thử](docs/task-9-validation.md).
 
 Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`.
-Bản Docker đang chạy từ nhánh `feature/task-9-staff-payment-integration`, đã ghép
-Task 9/10c/d và voucher với thanh toán nhân viên mới. Code đang phát triển ở nhánh
-`feature/task-9-preparation-board`. Các nhánh cũ vẫn được giữ;
+Bản làm việc và Docker hiện tại ở nhánh `feature/task-9-10-handoff`, đã tích hợp
+Task 9/10c/d/e với thanh toán nhân viên và tiến trình pha chế, dựa trên main `61f4474`.
+Các nhánh cũ vẫn được giữ;
 [ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
 
 **Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
@@ -25,14 +25,13 @@ Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá tr�
 [ba voucher mẫu](backend/voucher-samples.json) để nạp bằng `npm run vouchers:seed`
 trong backend. Cách chỉnh/xem chi tiết ở tài liệu Task 10e.
 
-Bước tiếp theo: [nền dữ liệu lượt voucher, điểm và yêu cầu hủy](docs/task-10-benefits-foundation.md)
-đã có trên nhánh `feature/task-10-benefits-foundation`; chưa bật đếm lượt/tích điểm trên bản Docker.
+[Nền dữ liệu lượt voucher, điểm và yêu cầu hủy](docs/task-10-benefits-foundation.md)
+đã được nâng cấp trên Docker; đơn cũ giữ policy 0, đơn mới áp dụng policy 1.
 
 [Backend hạn mức voucher và tích điểm](docs/task-10-voucher-points.md) đã hoàn thành
 trên `feature/task-10-voucher-points`; giữ/chốt/trả lượt và điểm theo transaction.
 [Giao diện số lượt voucher và cập nhật điểm](docs/task-10-voucher-points-ui.md)
-đã hoàn thành trên `feature/task-10-voucher-points-ui`. Bản Docker/database đang
-chạy vẫn ở bản tích hợp thanh toán nhân viên; cập nhật môi trường ở bước bàn giao.
+đã hoàn thành trên `feature/task-10-voucher-points-ui` và đã cập nhật Docker ở bước 6.
 
 [Bước 4 — hủy ngay/yêu cầu hủy và nhân viên duyệt](docs/task-9-cancellation-review.md)
 đã hoàn thành trên `feature/task-9-cancellation-review`, kế thừa các bước voucher/điểm.
@@ -41,11 +40,14 @@ Có giao diện khách và `/admin/orders`.
 [Bước 5 — bảng pha chế và thông báo nhận món](docs/task-9-preparation-board.md)
 triển khai trên `feature/task-9-preparation-board`, kế thừa các bước trước.
 Nhân viên cập nhật PAID → PREPARING → READY → COMPLETED; khách theo dõi trên lịch
-sử/chi tiết đơn. Bản Docker đang chạy chưa cập nhật các bước mới này.
+sử/chi tiết đơn. Bản Docker đang chạy đã có các bước này.
 
-**Bản tích hợp mới nhất (30/10/2026):** nhánh `feature/task-9-staff-payment-integration`
-đã ghép main `61f4474` (PR #30). [Luồng nhân viên xác nhận, thời hạn 15 phút và cách chạy thử](docs/staff-payment-integration.md).
-Các tài liệu Task 10c/d cũ ghi lại luồng 5 phút/callback trước thay đổi này.
+**Bản bàn giao mới nhất (30/10/2026):** [kết quả và luồng chạy thử Task 9/10c/d/e](docs/task-9-10-handoff.md).
+Mở http://localhost:3000/menu; nhân viên dùng `/admin/payments` và `/admin/orders`.
+Docker giữ chỗ 15 phút, có voucher/điểm/hủy/pha chế, ba dịch vụ có healthcheck.
+Đã qua 62/62 ca desktop/mobile trên production image, thử migration trên bản sao
+và giữ nguyên dữ liệu cũ. Còn review nhóm trước merge; không push trực tiếp main.
+Các tài liệu Task 10c/d cũ ghi luồng 5 phút/callback là lịch sử triển khai.
 
 ## Công nghệ
 

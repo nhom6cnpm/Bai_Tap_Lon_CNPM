@@ -1,5 +1,12 @@
 # Đối chiếu dự án với đề BrewLite — 30/10/2026
 
+**Cập nhật sau triển khai:** nội dung bên dưới là kết quả lịch sử tại `b535244`.
+Task 10e đã hoàn thành cùng các quy tắc nhóm về voucher/điểm/hủy; code hiện tại
+cũng đã có validate kiểu mật khẩu và hướng dẫn database test trong README.
+[Bản bàn giao Task 9/10c/d/e](task-9-10-handoff.md) ghi kết quả hiện hành, migration
+và kiểm thử Docker. Chưa thay phần review/DoD/Scrum do nhóm nghiệm thu; các đề
+xuất ngoài phạm vi được giao không tự trở thành yêu cầu đã triển khai.
+
 ## Phạm vi và nguồn
 
 - Đề `BrewLite-CongNghePhanMem.pdf`, VER 1.0, đọc đủ 8 trang PDF.

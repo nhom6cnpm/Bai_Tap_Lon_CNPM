@@ -27,7 +27,7 @@ Checklist triển khai tiếp theo:
 4. [x] Hủy ngay/yêu cầu hủy/nhân viên duyệt hoặc từ chối; UI khách và admin.
 5. [x] Hai tab quản trị, bảng pha chế PAID → PREPARING → READY → COMPLETED,
        thông báo READY phía khách.
-6. [ ] Kiểm thử chung, migration trên bản sao, cập nhật tài liệu/Postman, build
+6. [x] Kiểm thử chung, migration trên bản sao, cập nhật tài liệu/Postman, build
        Docker và chuẩn bị commit/PR theo quy tắc nhóm.
 
 Bước 1 đã hoàn thành trên `feature/task-10-benefits-foundation`: 138 unit và
@@ -61,10 +61,13 @@ nhận món trong lịch sử/chi tiết. 138 unit, 137 PostgreSQL/API test qua.
 2/2 qua. [Chi tiết bước 5](task-9-preparation-board.md). Chưa cập nhật Docker/database
 chính với các bước mới; tiếp theo là mục 6, nghiệm thu tích hợp và bàn giao.
 
-Chi tiết các điểm bổ sung kỹ thuật và dữ liệu cũ ở tài liệu liên kết. Đây là
-phương án triển khai tiếp theo; chưa có các chức năng mới này trên bản Docker.
+**Bước 6 đã hoàn thành trên `feature/task-9-10-handoff`:** build production image,
+62/62 ca UI Docker qua trong một lượt, kiểm tra migration trên bản sao và nâng cấp
+bản chạy 3000/3001. Cả ba dịch vụ healthy, dữ liệu cũ giữ nguyên, không hồi tố
+điểm/lượt; đã kiểm tra browser desktop/mobile trực tiếp. [Bàn giao và bằng chứng](task-9-10-handoff.md).
+Chuẩn bị PR để nhóm review; chưa merge main hoặc thay phần nghiệm thu chung của nhóm.
 
-## Cập nhật hiện hành — nhân viên xác nhận thanh toán (30/10)
+## Mốc tích hợp thanh toán nhân viên — lịch sử trước bước 1–6
 
 Nhánh bản tích hợp đang chạy Docker: `feature/task-9-staff-payment-integration`, trong thư mục chính
 `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`. Nền main mới: `61f4474`, PR #30.
@@ -213,15 +216,17 @@ Chi tiết phạm vi và cách xem: [Task 10e — voucher](task-10e-vouchers.md)
 
 ## 6. Kiểm thử tích hợp và bàn giao
 
-Đã hoàn tất việc thống nhất thư mục chính, cập nhật Docker và kiểm tra bảo toàn
-dữ liệu khi đưa Task 9/10c vào chạy. Checklist dưới đây là nghiệm thu cuối **cả
-Task 9 và Task 10c/d/e**, còn chờ Task 10e và review nhóm cho các nhánh đã triển khai.
+Đã hoàn tất phần triển khai/kiểm thử tự động cho Task 9/10c/d/e trên nhánh bàn giao.
+Kết quả hiện hành: [bước 6](task-9-10-handoff.md). Review và demo nghiệm thu nhóm
+vẫn là bước riêng trước khi merge.
 
-- [ ] Lint, format, build và các test cần thiết của cả hai task đều qua.
-- [ ] Chạy Docker cùng PostgreSQL thật; kiểm tra migration và bảo toàn dữ liệu.
-- [ ] Demo chọn món → giỏ → đăng nhập → tạo đơn → thanh toán → xác nhận → lịch sử.
-- [ ] Kiểm tra nhánh lỗi, thử lại trên cùng đơn và hết hạn 5 phút/hoàn kho.
-- [ ] Cập nhật README, Postman, kết quả kiểm tra; PR riêng theo task và review nhóm.
+- [x] Lint, format, build; 138 unit, 137 PostgreSQL/API và 62 UI Docker qua.
+- [x] Chạy Docker cùng PostgreSQL thật; thử migration trên bản sao và giữ fingerprint dữ liệu.
+- [x] Kiểm tra tự động chọn luồng đơn → thanh toán → xác nhận/lịch sử, hủy và pha chế.
+- [x] Kiểm tra nhánh lỗi, thử lại cùng đơn và hết hạn 15 phút/hoàn kho theo bản hiện hành.
+- [x] Cập nhật README, Postman, hướng dẫn demo và bằng chứng; chuẩn bị nhánh/PR tích hợp.
+- [ ] Ít nhất một thành viên review trước merge và demo nghiệm thu trên máy nhóm.
+- [ ] Nhóm hoàn thiện bằng chứng Sprint Review/Retrospective và DoD toàn đồ án.
 
 ## Nguồn yêu cầu
 
@@ -229,14 +234,14 @@ Task 9 và Task 10c/d/e**, còn chờ Task 10e và review nhóm cho các nhánh 
 - [Task 9 — Issue #20](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/issues/20).
 - [Task 10 — Issue #21](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/issues/21).
 - [Task 8 — Issue #18](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/issues/18).
-- Chốt trong trao đổi: thời hạn 5 phút, giữ tính năng số ly theo lựa chọn,
+- Chốt ban đầu 5 phút đã được cập nhật thành 15 phút theo Task 8 mới; giữ tính năng số ly theo lựa chọn,
   bỏ qua Đặt lại và bám phạm vi đã giao.
 
 ## Vị trí làm việc
 
-- `D:\Do_an_CNPM\BrewLite-availability`: code nhóm + phần số ly mới và checklist này.
+- `D:\Do_an_CNPM\BrewLite-availability`: worktree cũ của phần số ly; không phải bản bàn giao hiện hành.
 - `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`: thư mục làm việc chính, nhánh
-  `feature/task-10-payment-idempotency` khi làm Task 10d, đã chứa Task 9, nền Task 10c và frontend Task 8;
+  `feature/task-9-10-handoff`, đã chứa Task 9/10c/d/e và tích hợp Task 8;
   không còn xung đột merge.
 - `D:\Do_an_CNPM\BrewLite-task9-integration`: bản đối chiếu ở commit `4270997`
   (detached HEAD); tiếp tục phát triển trong thư mục chính.
