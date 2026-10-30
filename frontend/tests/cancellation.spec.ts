@@ -135,7 +135,11 @@ test("cancels an unpaid checkout, returns voucher use and keeps the current cart
     .getByRole("button", { name: "Chọn hoặc nhập mã", exact: true })
     .click();
   await expect(
-    page.getByRole("dialog").getByText("Còn 3 lượt").first(),
+    page
+      .getByRole("dialog")
+      .locator("label")
+      .filter({ hasText: "UI10K" })
+      .getByText("x3", { exact: true }),
   ).toBeVisible();
   await fits(page, "cancel-restored-voucher.png");
 });

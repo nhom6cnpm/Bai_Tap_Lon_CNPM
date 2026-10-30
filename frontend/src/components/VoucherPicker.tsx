@@ -200,6 +200,19 @@ function VoucherDialog({
               key={voucher.code}
               className={`voucher-ticket relative flex overflow-hidden rounded-lg border bg-white transition-colors [--voucher-stub-width:4.5rem] has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-amber-700 sm:[--voucher-stub-width:5.5rem] ${voucher.unavailableReason ? "cursor-not-allowed border-stone-200 text-stone-500" : draft === voucher.code ? "cursor-pointer border-amber-700" : "cursor-pointer border-stone-200 hover:border-amber-400"}`}
             >
+              {voucher.usage && (
+                <span className="sr-only">
+                  Còn {voucher.usage.availableUses} lượt
+                </span>
+              )}
+              {voucher.usage && voucher.usage.availableUses > 1 && (
+                <span
+                  aria-hidden="true"
+                  className="absolute right-0 top-0 rounded-bl-xl bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-900"
+                >
+                  x{voucher.usage.availableUses}
+                </span>
+              )}
               <span
                 aria-hidden="true"
                 className={`flex w-[var(--voucher-stub-width)] shrink-0 flex-col items-center justify-center gap-2 border-r border-dashed px-2 py-5 ${voucher.unavailableReason ? "border-stone-200 bg-stone-50 text-stone-400" : "border-amber-200 bg-amber-50/70 text-amber-800"}`}
@@ -227,18 +240,9 @@ function VoucherDialog({
                   <span className="mt-2 inline-block max-w-full break-all rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
                     {voucher.code}
                   </span>
-                  {voucher.usage && (
-                    <span className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                      <span
-                        className={`rounded-full px-2 py-1 font-semibold ${voucher.usage.availableUses > 0 ? "bg-amber-50 text-amber-900" : "bg-stone-100 text-stone-600"}`}
-                      >
-                        Còn {voucher.usage.availableUses} lượt
-                      </span>
-                      {voucher.usage.reservedUses > 0 && (
-                        <span className="text-stone-500">
-                          {voucher.usage.reservedUses} lượt đang giữ
-                        </span>
-                      )}
+                  {voucher.usage && voucher.usage.reservedUses > 0 && (
+                    <span className="mt-2 block text-xs text-stone-500">
+                      {voucher.usage.reservedUses} lượt đang giữ
                     </span>
                   )}
                   <span className="mt-2 block text-xs leading-5">

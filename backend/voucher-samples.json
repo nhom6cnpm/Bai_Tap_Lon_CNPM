@@ -34,5 +34,17 @@
     "validDays": 30,
     "isActive": true,
     "isPublic": true
+  },
+  {
+    "code": "NHAP7K",
+    "title": "Ưu đãi nhập mã mẫu: giảm 7.000đ cho đơn từ 35.000đ",
+    "discountType": "FIXED",
+    "discountValue": 7000,
+    "minSubtotal": 35000,
+    "maxUsesPerUser": 3,
+    "maxDiscount": null,
+    "validDays": 30,
+    "isActive": true,
+    "isPublic": false
   }
 ]

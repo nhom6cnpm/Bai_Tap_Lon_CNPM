@@ -77,6 +77,12 @@ Postman đã thêm request quote với JWT trong thư mục Task 10e.
 
 ## Điều chỉnh voucher mẫu
 
+File mẫu gồm ba mã công khai `THU5K`, `BREW10`, `NHOM15K` và mã chỉ nhập
+`NHAP7K` (`isPublic: false`): giảm 7.000đ cho đơn từ 35.000đ, hạn 30 ngày
+tính từ lần nạp đầu tiên, ba lượt/user. Nhập mã ở giỏ hàng, bấm **Kiểm tra** rồi
+**Xác nhận** để áp dụng. Chạy lại seed mặc định chỉ thêm mã thiếu, giữ nguyên
+voucher và lượt dùng đã có.
+
 Chỉnh `maxUsesPerUser` trong `backend/voucher-samples.json`, rồi dùng lệnh nạp
 hiện có sau khi database đã có migration bước 1. Mặc định không ghi đè mã đã có;
 `--update` mới cập nhật. Nếu cấu hình bỏ trường hạn mức khi update thì giữ mức

@@ -22,7 +22,8 @@ Task 10d: [khóa yêu cầu thanh toán và gửi lại an toàn](docs/task-10d-
 
 Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá trên đơn](docs/task-10e-vouchers.md).
 Đã có giao diện và nền xử lý trên nhánh `feature/task-10-vouchers`; có cấu hình
-[ba voucher mẫu](backend/voucher-samples.json) để nạp bằng `npm run vouchers:seed`
+[ba voucher công khai và mã nhập riêng mẫu `NHAP7K`](backend/voucher-samples.json)
+để nạp bằng `npm run vouchers:seed`
 trong backend. Cách chỉnh/xem chi tiết ở tài liệu Task 10e.
 
 [Nền dữ liệu lượt voucher, điểm và yêu cầu hủy](docs/task-10-benefits-foundation.md)

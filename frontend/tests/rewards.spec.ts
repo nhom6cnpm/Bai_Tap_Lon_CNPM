@@ -118,12 +118,17 @@ test("shows available and held uses, disables held-out vouchers and refreshes af
   const dialog = await picker(page);
   const ticket = dialog.locator("label").filter({ hasText: "UI10K" });
   await expect(ticket).toContainText("Còn 3 lượt");
+  await expect(ticket.getByText("x3", { exact: true })).toBeVisible();
   const first = await reserve(request, auth);
   await expect(ticket).toContainText("Còn 2 lượt");
+  await expect(ticket.getByText("x2", { exact: true })).toBeVisible();
   await expect(ticket).toContainText("1 lượt đang giữ");
   await reserve(request, auth);
+  await expect(ticket).toContainText("Còn 1 lượt");
+  await expect(ticket.getByText(/^x\d+$/)).toHaveCount(0);
   await reserve(request, auth);
   await expect(ticket).toContainText("Còn 0 lượt");
+  await expect(ticket.getByText(/^x\d+$/)).toHaveCount(0);
   await expect(ticket).toContainText("3 lượt đang giữ");
   await expect(ticket.getByRole("radio")).toBeDisabled();
   await fits(page, "voucher-all-held");
@@ -135,6 +140,7 @@ test("shows available and held uses, disables held-out vouchers and refreshes af
     ).ok(),
   ).toBe(true);
   await expect(ticket).toContainText("Còn 1 lượt");
+  await expect(ticket.getByText(/^x\d+$/)).toHaveCount(0);
   await expect(ticket).toContainText("2 lượt đang giữ");
   await expect(ticket.getByRole("radio")).toBeEnabled();
   await fits(page, "voucher-use-restored");

@@ -62,8 +62,11 @@ thử lại cùng đơn, không đổi tổng hay hạn. Có thể thử thêm c
 
 Voucher mặc định ba lượt/user/mã, một mã và một lượt/đơn. Dùng hết thì ẩn,
 đang giữ hết thì khóa chọn; trả lượt làm mã khả dụng lại nếu còn hiệu lực.
-Điểm chỉ tích lũy/hiển thị, chưa đổi thành tiền. Có ba mã mẫu trong
+Điểm chỉ tích lũy/hiển thị, chưa đổi thành tiền. Có ba mã công khai và mã nhập
+riêng mẫu `NHAP7K` (giảm 7.000đ, đơn từ 35.000đ, ba lượt/user) trong
 `backend/voucher-samples.json`; [cách chỉnh/nạp](task-10-voucher-points.md).
+Danh sách hiển thị số lượt khả dụng `x2`, `x3` ở góc phải voucher; còn một lượt
+thì không hiện nhãn. Mã nhập riêng không xuất hiện trong danh sách công khai.
 
 ## Nâng cấp và bảo toàn dữ liệu
 
@@ -127,6 +130,26 @@ Hai container kiểm thử đã dừng/xóa sau khi lưu kết quả; container/
 [Postman hủy/pha chế](task-9-cancellation.postman_collection.json),
 [API voucher/điểm](task-10-voucher-points.md),
 [cách tính sức bán theo lựa chọn](selection-availability.md).
+
+### Kiểm tra bổ sung giao diện voucher và admin (30/10)
+
+- Sửa mô tả trạng thái đơn bị lặp; kiểm tra 16 trường hợp desktop/mobile trên
+  Docker thật qua, tiến trình PAID/PREPARING/READY/COMPLETED vẫn giữ nguyên.
+- Nhãn lượt voucher chuyển thành `xN` ở góc phải khi còn từ hai lượt, ẩn nhãn
+  khi còn một lượt; vẫn có mô tả số lượt cho trình đọc màn hình.
+- Bốn ca Playwright desktop/mobile kiểm tra số lượt và nhập mã riêng qua.
+  Nạp `NHAP7K` vào DB đồ án thêm đúng một mã, bỏ qua ba mã cũ, không ghi đè.
+  Browser trên Docker thật kiểm tra vị trí nhãn và nhập mã giảm 35.000đ còn
+  28.000đ qua trên cả desktop/mobile, không tạo đơn.
+- Kiểm tra lại 26/26 ca Playwright của `cancellation.spec.ts`,
+  `preparation.spec.ts`, `vouchers.spec.ts` qua trên API/database `_ui_test`
+  riêng: xác nhận tiền, duyệt/từ chối hủy, đảo điểm, hoàn lượt, chặn pha khi
+  chờ duyệt hủy, tiến trình READY/COMPLETED và quyền truy cập nhân viên.
+- Kiểm tra chỉ đọc trang admin đơn/thanh toán trên Docker thật ở desktop/mobile
+  qua, không lỗi JavaScript/tràn ngang; đăng xuất chặn xem trang nhân viên.
+  Không duyệt tiền, hủy đơn hoặc chuyển tiến trình dữ liệu đồ án khi kiểm tra.
+- Frontend lint, format và build Docker qua. Ca kiểm thử hoàn lượt sau hủy được
+  cập nhật để kiểm tra nhãn `x3` của đúng mã UI10K thay cho nội dung cũ.
 
 Build còn warning engine của một số dependency công cụ trên Node 20 như các
 bước trước; image vẫn build và qua kiểm thử runtime ở trên. Chưa nâng dependency
