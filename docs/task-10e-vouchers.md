@@ -22,6 +22,20 @@ Migration không tạo hoặc kích hoạt voucher nào. Chưa triển khai tíc
 - Checkout, chi tiết và xác nhận hiển thị khoản giảm đã lưu. Tiếp tục một đơn đã
   tạo giữ nguyên mã và số tiền; không đổi voucher ngay trên phiên QR.
 
+## Cập nhật giao diện vé giảm giá
+
+Theo yêu cầu tham khảo Shopee, mục Ưu đãi trong giỏ và tiêu đề hộp chọn có biểu
+tượng vé SVG dùng chung. Danh sách dùng thẻ có phần nhận diện BrewLite bên trái,
+đường phân cách nét đứt và hai khuyết vé; bên phải là mức giảm, tên/mã, điều kiện,
+hạn dùng và nút chọn. Mã không đủ điều kiện có màu nhạt và lý do rõ ràng.
+Hộp chọn giữ tiêu đề/nút xác nhận, cuộn riêng phần nội dung trên desktop/mobile.
+Đây là thay đổi trình bày, không thay đổi cách tính giảm giá hoặc phát hành mã.
+Đã chạy lại 8 kiểm thử voucher desktop/mobile, tất cả qua; lint/TypeScript và
+build frontend Docker qua. Đã cập nhật riêng container frontend và kiểm tra bản
+production ở hai kích thước màn hình. Ảnh mẫu danh sách bằng dữ liệu test nằm
+ngoài Git tại `.task9-recovery/voucher-ticket-list-desktop.png` và
+`voucher-ticket-list-mobile.png`.
+
 ## API và dữ liệu
 
 `POST /vouchers/quote` công khai, `Cache-Control: no-store`, không ghi đơn/kho:

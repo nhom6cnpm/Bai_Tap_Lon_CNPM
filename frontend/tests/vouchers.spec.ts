@@ -56,14 +56,14 @@ async function picker(page: Page) {
   return page.getByRole("dialog", { name: "Chọn ưu đãi BrewLite" });
 }
 
-async function fits(page: Page) {
+async function fits(page: Page, name = "voucher") {
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
   await page.screenshot({
-    path: test.info().outputPath("voucher.png"),
+    path: test.info().outputPath(`${name}.png`),
     fullPage: true,
   });
 }
@@ -86,7 +86,7 @@ test("select a public voucher and pay the discounted amount through the QR on a 
     dialog.getByRole("radio", { name: /Ưu đãi cho đơn từ/ }),
   ).toBeDisabled();
   await dialog.getByRole("radio", { name: /Ưu đãi kiểm thử/ }).check();
-  await fits(page);
+  await fits(page, "voucher-list");
   await dialog.getByRole("button", { name: "Xác nhận", exact: true }).click();
   const place = page.getByRole("button", { name: /^Đặt hàng/ });
   await expect(place).toHaveText(/25[.,]000/);
@@ -197,10 +197,12 @@ test("revalidates a selected voucher when quantity changes and allows removing i
   await page
     .getByRole("button", { name: "Giảm số lượng", exact: true })
     .click();
-  await expect(page.getByRole('main').getByRole("alert")).toContainText("chưa đạt tối thiểu");
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    "chưa đạt tối thiểu",
+  );
   await expect(page.getByRole("button", { name: /^Đặt hàng/ })).toBeDisabled();
   await page.getByRole("button", { name: "Bỏ mã", exact: true }).click();
-  await expect(page.getByRole('main').getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("main").getByRole("alert")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /^Đặt hàng/ })).toBeEnabled();
   await expect(page.getByRole("button", { name: /^Đặt hàng/ })).toHaveText(
     /35[.,]000/,
