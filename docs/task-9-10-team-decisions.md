@@ -184,4 +184,6 @@ dữ liệu và siết hủy trực tiếp. [Bước 2 backend lượt voucher/�
 đã bật đầy đủ transaction cho đơn mới trên nhánh riêng.
 [Bước 3 giao diện voucher/điểm](task-10-voucher-points-ui.md) và
 [bước 4 hủy/yêu cầu/duyệt hủy](task-9-cancellation-review.md) đã hoàn thành trên
-nhánh riêng. Chưa cập nhật Docker/database chính với các bước mới này.
+nhánh riêng. [Bước 5 bảng pha chế và thông báo READY](task-9-preparation-board.md)
+cũng đã hoàn thành trên nhánh riêng. Chưa cập nhật Docker/database chính với
+các bước mới này.

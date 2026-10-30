@@ -143,8 +143,8 @@ function withBenefits(order: OrderWire): Order {
 async function readOrders(
   path: string,
   signal?: AbortSignal,
+  token: string | null = getStoredToken(),
 ): Promise<unknown> {
-  const token = getStoredToken();
   if (!token)
     throw new OrderApiError(401, "Vui lòng đăng nhập để xem đơn hàng.");
   const response = await fetch(`${getApiBaseUrl()}${path}`, {
@@ -165,11 +165,17 @@ async function readOrders(
           : "Không tải được đơn hàng. Vui lòng thử lại.",
     );
   }
-  return response.json() as Promise<unknown>;
+  const data: unknown = await response.json();
+  if (signal?.aborted || getStoredToken() !== token)
+    throw new DOMException("Tài khoản đã thay đổi.", "AbortError");
+  return data;
 }
 
-export async function getMyOrders(signal?: AbortSignal): Promise<Order[]> {
-  const data = await readOrders("/orders/me", signal);
+export async function getMyOrders(
+  signal?: AbortSignal,
+  token: string | null = getStoredToken(),
+): Promise<Order[]> {
+  const data = await readOrders("/orders/me", signal, token);
   if (!Array.isArray(data) || !data.every(isOrder))
     throw new Error("Dữ liệu đơn hàng chưa hợp lệ. Vui lòng thử lại.");
   return data.map(withBenefits);
@@ -178,8 +184,13 @@ export async function getMyOrders(signal?: AbortSignal): Promise<Order[]> {
 export async function getMyOrder(
   id: string,
   signal?: AbortSignal,
+  token: string | null = getStoredToken(),
 ): Promise<Order> {
-  const data = await readOrders(`/orders/${encodeURIComponent(id)}`, signal);
+  const data = await readOrders(
+    `/orders/${encodeURIComponent(id)}`,
+    signal,
+    token,
+  );
   if (!isOrder(data) || data.id !== id)
     throw new Error("Dữ liệu đơn hàng chưa hợp lệ. Vui lòng thử lại.");
   return withBenefits(data);

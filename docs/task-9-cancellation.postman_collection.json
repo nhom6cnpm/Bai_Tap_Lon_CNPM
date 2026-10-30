@@ -1,6 +1,6 @@
 {
   "info": {
-    "name": "BrewLite - Task 9 cancellation review",
+    "name": "BrewLite - Task 9 cancellation and preparation",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -86,6 +86,52 @@
           "mode": "raw",
           "raw": "{\n  \"requestId\": \"{{requestId}}\",\n  \"reason\": \"Khách xác nhận tiếp tục nhận món\"\n}"
         }
+      }
+    },
+    {
+      "name": "Staff - list PAID, PREPARING and READY orders",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" }
+        ],
+        "url": "{{baseUrl}}/admin/orders?status=PAID,PREPARING,READY"
+      }
+    },
+    {
+      "name": "Staff - start preparing a PAID order",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/admin/orders/{{orderId}}/status",
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"PREPARING\"\n}" }
+      }
+    },
+    {
+      "name": "Staff - mark a PREPARING order READY",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/admin/orders/{{orderId}}/status",
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"READY\"\n}" }
+      }
+    },
+    {
+      "name": "Staff - confirm pickup of a READY order",
+      "request": {
+        "method": "PATCH",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{adminToken}}" },
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{baseUrl}}/admin/orders/{{orderId}}/status",
+        "body": { "mode": "raw", "raw": "{\n  \"status\": \"COMPLETED\"\n}" }
       }
     }
   ]

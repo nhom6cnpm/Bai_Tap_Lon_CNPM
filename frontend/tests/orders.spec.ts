@@ -270,7 +270,10 @@ test("only PAID can show confirmation; pending, failed, cancelled and completed 
     page.getByRole("heading", { name: "Đặt hàng thành công!" }),
   ).toBeVisible();
   await expect(
-    page.getByText("Mời tới quầy lấy nước.", { exact: true }),
+    page.getByText(
+      "Cửa hàng đã nhận đơn. Theo dõi tiến trình để biết khi đồ uống sẵn sàng.",
+      { exact: true },
+    ),
   ).toBeVisible();
   for (const entry of orders.filter((entry) => entry.status !== "PAID")) {
     await page.goto(`/orders/${entry.id}/confirmation?status=SUCCESS`);

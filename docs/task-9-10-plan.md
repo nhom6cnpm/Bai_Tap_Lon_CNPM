@@ -25,7 +25,7 @@ Checklist triển khai tiếp theo:
        đồng thời, gửi lặp và quá hạn trước khi mở giao diện.
 3. [x] Giao diện voucher còn lượt/đang giữ/ẩn hết lượt; cập nhật điểm và lịch sử.
 4. [x] Hủy ngay/yêu cầu hủy/nhân viên duyệt hoặc từ chối; UI khách và admin.
-5. [ ] Hai tab quản trị, bảng pha chế PAID → PREPARING → READY → COMPLETED,
+5. [x] Hai tab quản trị, bảng pha chế PAID → PREPARING → READY → COMPLETED,
        thông báo READY phía khách.
 6. [ ] Kiểm thử chung, migration trên bản sao, cập nhật tài liệu/Postman, build
        Docker và chuẩn bị commit/PR theo quy tắc nhóm.
@@ -53,6 +53,13 @@ giao diện khách và danh sách nhân viên duyệt/từ chối, đóng yêu c
 còn lại sửa bộ chọn thông báo trong test và chạy lại 2/2 qua.
 [Chi tiết bước 4](task-9-cancellation-review.md). Chưa đổi Docker/database chính;
 tiếp theo là mục 5, bảng pha chế và thông báo READY phía khách.
+
+Bước 5 đã hoàn thành trên `feature/task-9-preparation-board`: bảng ba cột,
+PATCH chuyển trạng thái có khóa/kiểm tra mũi tên, chặn khi chờ hủy và thông báo
+nhận món trong lịch sử/chi tiết. 138 unit, 137 PostgreSQL/API test qua. UI có
+60 ca qua trong lượt chung; hai ca xác nhận cập nhật câu thông báo và chạy lại
+2/2 qua. [Chi tiết bước 5](task-9-preparation-board.md). Chưa cập nhật Docker/database
+chính với các bước mới; tiếp theo là mục 6, nghiệm thu tích hợp và bàn giao.
 
 Chi tiết các điểm bổ sung kỹ thuật và dữ liệu cũ ở tài liệu liên kết. Đây là
 phương án triển khai tiếp theo; chưa có các chức năng mới này trên bản Docker.

@@ -58,7 +58,9 @@ tài khoản trả 404. API admin dùng JwtAuthGuard + RolesGuard + ADMIN của 
 
 Lý do/ghi chú được trim, tối đa 500 ký tự. Request id phải là UUID. Body yêu cầu
 hủy không nhận trạng thái hoặc số tiền từ client. Danh sách admin bước này chỉ
-hỗ trợ `cancelRequestStatus=PENDING`; API/bảng pha chế thuộc bước 5.
+hỗ trợ `cancelRequestStatus=PENDING`. [Bước 5](task-9-preparation-board.md) bổ sung
+filter trạng thái pha chế và API chuyển trạng thái; GET không filter mặc định
+trả các đơn PAID/PREPARING/READY.
 
 Gửi lặp lúc chờ trả cùng yêu cầu; duyệt lặp cùng id/cùng quyết định giữ nguyên
 mốc/người/ghi chú đã xử lý. Quyết định ngược hoặc id cũ sau khi khách gửi lại

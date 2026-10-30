@@ -140,4 +140,15 @@ export class OrderHistoryService {
     if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
     return (await this.toResponses([order]))[0];
   }
+
+  async findPreparationOrders(
+    status = 'PAID,PREPARING,READY',
+  ): Promise<OrderHistoryResponseDto[]> {
+    const orders = await this.orders.find({
+      where: { status: In(status.split(',')) },
+      relations: { items: true },
+      order: { createdAt: 'ASC', id: 'ASC' },
+    });
+    return this.toResponses(orders);
+  }
 }

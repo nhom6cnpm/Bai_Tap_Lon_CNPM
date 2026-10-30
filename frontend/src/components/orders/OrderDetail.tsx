@@ -7,6 +7,7 @@ import { useOrderClock, useOwnOrder } from "@/hooks/useOrderHistory";
 import { formatDate, orderStatusLabel } from "@/lib/orderUtils";
 import OrderRewards from "./OrderRewards";
 import OrderCancellation from "./OrderCancellation";
+import ReadyOrdersNotice from "./ReadyOrdersNotice";
 import { useOrderRewardsSync } from "@/hooks/useRewardsProfile";
 import {
   LoginPrompt,
@@ -55,6 +56,9 @@ export function OrderDetail({
   const returnTo = `/orders/${encodeURIComponent(id)}${confirmation ? "/confirmation" : ""}`;
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-9">
+      <ReadyOrdersNotice
+        orders={query.authenticated && order && !query.isError ? [order] : []}
+      />
       <Link
         href="/orders"
         className="mb-5 inline-block text-sm font-semibold text-amber-800 hover:underline"
@@ -89,7 +93,10 @@ export function OrderDetail({
                 <p className="mt-3 font-semibold text-green-800">
                   Thanh toán đã được xác nhận · PAID
                 </p>
-                <p className="mt-2 text-stone-600">Mời tới quầy lấy nước.</p>
+                <p className="mt-2 text-stone-600">
+                  Cửa hàng đã nhận đơn. Theo dõi tiến trình để biết khi đồ uống
+                  sẵn sàng.
+                </p>
                 <Link href="/menu" className={`${primaryButton} mt-5`}>
                   Về trang chủ
                 </Link>
@@ -161,8 +168,11 @@ export function OrderDetail({
                   <div className="rounded-2xl border border-stone-200 bg-white p-5">
                     <h2 className="font-bold">Nhận đồ uống tại quầy</h2>
                     <p className="mt-2 text-sm leading-6 text-stone-600">
-                      Xuất trình mã đơn để nhân viên đối chiếu. Theo dõi trạng
-                      thái sẵn sàng nhận món.
+                      {order.status === "READY"
+                        ? "Đồ uống đã sẵn sàng, mời bạn ra quầy. Xuất trình mã đơn để nhân viên đối chiếu."
+                        : order.status === "PREPARING"
+                          ? "Nhân viên đang pha đồ uống của bạn. Màn hình sẽ cập nhật khi món sẵn sàng."
+                          : "Cửa hàng đã nhận đơn. Bạn có thể theo dõi tiến trình pha chế tại đây."}
                     </p>
                   </div>
                 )}

@@ -10,11 +10,11 @@ export function useOrderHistory() {
   const hydrated = useHydrated();
   const query = useQuery({
     queryKey: ["orders", "history", token],
-    queryFn: ({ signal }) => getMyOrders(signal),
+    queryFn: ({ signal }) => getMyOrders(signal, token),
     enabled: hydrated && !!token,
     retry: false,
     staleTime: 0,
-    refetchInterval: 10_000,
+    refetchInterval: 4_000,
     refetchOnWindowFocus: true,
   });
   return { ...query, authenticated: hydrated && !!token, hydrated };
@@ -28,7 +28,7 @@ export function useOwnOrder(
   const hydrated = useHydrated();
   const query = useQuery({
     queryKey: ["orders", "detail", id, token],
-    queryFn: ({ signal }) => getMyOrder(id, signal),
+    queryFn: ({ signal }) => getMyOrder(id, signal, token),
     enabled: hydrated && !!token && !!id,
     retry: false,
     staleTime: 0,

@@ -97,8 +97,8 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
       status,
       total: 75000,
       items: [{ qty: 2 }],
-      createdAt: new Date('2026-10-30T08:00:00Z'),
-      expiresAt: new Date('2026-10-30T08:15:00Z'),
+      createdAt: new Date(Date.now() - 60_000),
+      expiresAt: new Date(Date.now() + 15 * 60_000),
     }) as unknown as Order;
 
   const create = (key = 'key-1', method: 'WALLET' | 'CARD' = 'WALLET') =>
@@ -151,11 +151,12 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
 
   describe('POST /payments (createPayment)', () => {
     it('tạo phiên PENDING, số tiền lấy từ đơn hàng, đơn vẫn PENDING', async () => {
+      const originalDeadline = new Date(orders[0].expiresAt);
       const res = await create();
       expect(res.status).toBe('PENDING');
       expect(res.amount).toBe(75000);
       expect(res.orderStatus).toBe('PENDING');
-      expect(res.expiresAt).toEqual(new Date('2026-10-30T08:15:00Z'));
+      expect(res.expiresAt).toEqual(originalDeadline);
       expect(updateOrderStatus).not.toHaveBeenCalled();
     });
 

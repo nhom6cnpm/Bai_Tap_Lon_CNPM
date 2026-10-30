@@ -13,6 +13,7 @@ import { formatDate } from "@/lib/orderUtils";
 import { formatPrice } from "@/lib/formatPrice";
 import { OrderItems, StatusBadge } from "@/components/orders/OrderParts";
 import PriceSummary from "@/components/PriceSummary";
+import PreparationBoard from "@/components/orders/PreparationBoard";
 import type { Order } from "@/types/order";
 
 export default function AdminOrdersPage() {
@@ -106,61 +107,69 @@ function CancellationBoard({ token }: { token: string }) {
           Đơn hàng
         </Link>
       </nav>
-      <h1 className="text-2xl font-bold">Yêu cầu hủy đơn</h1>
-      <p className="mt-2 text-sm text-stone-600">
-        Xử lý yêu cầu hủy trước khi xác nhận thanh toán. Đơn chưa thanh toán vẫn
-        tự hết hạn theo thời gian đã chốt.
-      </p>
-      <div className="my-4 flex flex-wrap items-center gap-3">
-        <button
-          disabled={query.isFetching}
-          onClick={() => void query.refetch()}
-          className="rounded-xl border border-stone-300 px-4 py-2 text-sm"
-        >
-          Cập nhật danh sách
-        </button>
-        <label className="text-sm">
-          <input
-            type="checkbox"
-            checked={sound}
-            onChange={(event) => setSound(event.target.checked)}
-          />{" "}
-          Âm báo yêu cầu mới
-        </label>
-      </div>
-      {notice && (
-        <div
-          role="status"
-          className="my-3 flex items-center justify-between gap-3 rounded-xl bg-amber-50 p-3 text-sm"
-        >
-          <span>{notice}</span>
-          <button aria-label="Đóng thông báo" onClick={() => setNotice("")}>
-            ✕
+      <h1 className="mb-6 text-2xl font-bold">Quản lý đơn hàng</h1>
+      <section
+        id="cancel-requests"
+        aria-label="Yêu cầu hủy đơn"
+        className="scroll-mt-36"
+      >
+        <h2 className="text-xl font-bold">Yêu cầu hủy đơn</h2>
+        <p className="mt-2 text-sm text-stone-600">
+          Xử lý yêu cầu hủy trước khi xác nhận thanh toán. Đơn chưa thanh toán
+          vẫn tự hết hạn theo thời gian đã chốt.
+        </p>
+        <div className="my-4 flex flex-wrap items-center gap-3">
+          <button
+            disabled={query.isFetching}
+            onClick={() => void query.refetch()}
+            className="rounded-xl border border-stone-300 px-4 py-2 text-sm"
+          >
+            Cập nhật danh sách
           </button>
+          <label className="text-sm">
+            <input
+              type="checkbox"
+              checked={sound}
+              onChange={(event) => setSound(event.target.checked)}
+            />{" "}
+            Âm báo yêu cầu mới
+          </label>
         </div>
-      )}
-      {query.isPending && <p role="status">Đang tải yêu cầu…</p>}
-      {query.isError && (
-        <p role="alert" className="text-red-800">
-          {query.error.message}
-        </p>
-      )}
-      {!query.isError && query.data?.length === 0 && (
-        <p className="rounded-2xl border border-stone-200 p-6">
-          Không có yêu cầu hủy đang chờ.
-        </p>
-      )}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {!query.isError &&
-          query.data?.map((order) => (
-            <ReviewCard
-              key={order.cancelRequest?.id}
-              order={order}
-              token={token}
-              serverNow={now}
-            />
-          ))}
-      </div>
+        {notice && (
+          <div
+            role="status"
+            className="my-3 flex items-center justify-between gap-3 rounded-xl bg-amber-50 p-3 text-sm"
+          >
+            <span>{notice}</span>
+            <button aria-label="Đóng thông báo" onClick={() => setNotice("")}>
+              ✕
+            </button>
+          </div>
+        )}
+        {query.isPending && <p role="status">Đang tải yêu cầu…</p>}
+        {query.isError && (
+          <p role="alert" className="text-red-800">
+            {query.error.message}
+          </p>
+        )}
+        {!query.isError && query.data?.length === 0 && (
+          <p className="rounded-2xl border border-stone-200 p-6">
+            Không có yêu cầu hủy đang chờ.
+          </p>
+        )}
+        <div className="grid gap-4 lg:grid-cols-2">
+          {!query.isError &&
+            query.data?.map((order) => (
+              <ReviewCard
+                key={order.cancelRequest?.id}
+                order={order}
+                token={token}
+                serverNow={now}
+              />
+            ))}
+        </div>
+      </section>
+      <PreparationBoard token={token} />
     </section>
   );
 }

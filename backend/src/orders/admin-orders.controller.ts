@@ -1,10 +1,12 @@
 import {
   Body,
+  BadRequestException,
   Controller,
   Get,
   Header,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -19,8 +21,11 @@ import { OrderHistoryService } from './order-history.service';
 import {
   ApproveCancellationDto,
   RejectCancellationDto,
-  ListCancellationRequestsDto,
 } from './dto/cancellation.dto';
+import {
+  AdvancePreparationDto,
+  ListAdminOrdersDto,
+} from './dto/preparation.dto';
 
 @Controller('admin/orders')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -33,8 +38,20 @@ export class AdminOrdersController {
 
   @Get()
   @Header('Cache-Control', 'private, no-store')
-  list(@Query() query: ListCancellationRequestsDto) {
-    return this.history.findCancellationRequests(query.cancelRequestStatus);
+  list(@Query() query: ListAdminOrdersDto) {
+    if (query.status && query.cancelRequestStatus)
+      throw new BadRequestException(
+        'Vui lòng truy vấn riêng yêu cầu hủy và bảng pha chế.',
+      );
+    return query.cancelRequestStatus
+      ? this.history.findCancellationRequests(query.cancelRequestStatus)
+      : this.history.findPreparationOrders(query.status);
+  }
+
+  @Patch(':id/status')
+  async advance(@Param('id') id: string, @Body() dto: AdvancePreparationDto) {
+    await this.orders.advancePreparation(id, dto.status);
+    return this.history.findForAdminById(id);
   }
 
   @Post(':id/cancel')

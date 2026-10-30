@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, IsString, IsUUID, Length } from 'class-validator';
+import { IsOptional, IsString, IsUUID, Length } from 'class-validator';
 
 const trimText = ({ value }: { value: unknown }): unknown =>
   typeof value === 'string' ? value.trim() : value;
@@ -25,9 +25,4 @@ export class ApproveCancellationDto {
 export class RejectCancellationDto extends RequestCancellationDto {
   @IsUUID()
   requestId!: string;
-}
-
-export class ListCancellationRequestsDto {
-  @IsIn(['PENDING'])
-  cancelRequestStatus = 'PENDING' as const;
 }

@@ -29,6 +29,10 @@ import {
 import { Payment } from '../payments/entities/payment.entity';
 import { OrderBenefitsService } from './order-benefits.service';
 import { BENEFITS_POLICY_VERSIONS } from './benefits-policy';
+import {
+  PREPARATION_TARGETS,
+  type PreparationTarget,
+} from './dto/preparation.dto';
 
 @Injectable()
 export class OrdersService {
@@ -297,6 +301,27 @@ export class OrdersService {
     if (order.status !== status)
       throw new BadRequestException('Đơn đã hết hạn');
     return order;
+  }
+
+  async advancePreparation(
+    orderId: string,
+    target: PreparationTarget,
+  ): Promise<void> {
+    if (!PREPARATION_TARGETS.includes(target))
+      throw new BadRequestException('Trạng thái pha chế không hợp lệ.');
+    const updated = await this.dataSource.transaction(async (manager) => {
+      const order = await this.lockById(orderId, manager);
+      if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+      // Commit timeout cleanup before reporting a stale staff action.
+      if (await this.expireIfNeeded(order, manager)) return order;
+      assertNoPendingCancellation(order);
+      if (order.status === target) return order;
+      return this.updateOrderStatus(orderId, target, manager);
+    });
+    if (updated.status !== target)
+      throw new ConflictException(
+        'Đơn đã hết hạn hoặc bị hủy. Vui lòng tải lại bảng.',
+      );
   }
 
   async requestCancellation(

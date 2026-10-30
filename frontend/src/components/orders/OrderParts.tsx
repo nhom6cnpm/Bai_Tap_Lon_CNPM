@@ -163,6 +163,11 @@ export function OrderCard({
         </div>
         <StatusBadge order={order} />
       </div>
+      {order.status === "READY" && (
+        <p className="mt-3 rounded-xl bg-green-50 p-3 text-sm font-semibold text-green-900">
+          Đồ uống đã sẵn sàng, mời bạn ra quầy.
+        </p>
+      )}
       <OrderItems order={order} />
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-stone-100 pt-4">
         <Link

@@ -1678,6 +1678,299 @@ describeDatabase(
       });
     });
 
+    describe('staff preparation board and customer progress', () => {
+      const advance = (id: string, status: string, bearer = adminToken) =>
+        request(app.getHttpServer())
+          .patch(`/admin/orders/${id}/status`)
+          .set('Authorization', `Bearer ${bearer}`)
+          .send({ status });
+      const list = (
+        query = 'status=PAID,PREPARING,READY',
+        bearer = adminToken,
+      ) =>
+        request(app.getHttpServer())
+          .get(`/admin/orders?${query}`)
+          .set('Authorization', `Bearer ${bearer}`);
+      const paid = async (customer = userId, voucher = false) => {
+        if (voucher)
+          await database.getRepository(Voucher).save({
+            code: 'PREP5K',
+            title: 'Preparation fixture',
+            discountType: 'FIXED',
+            discountValue: 5000,
+            minSubtotal: 0,
+            maxDiscount: null,
+            maxUsesPerUser: 3,
+            startsAt: new Date(Date.now() - 86400000),
+            endsAt: new Date(Date.now() + 86400000),
+            isActive: true,
+            isPublic: true,
+          });
+        const order = await orders.createOrder(customer, {
+          items: [item()],
+          ...(voucher ? { voucherCode: 'PREP5K' } : {}),
+        });
+        const payment = await payments.createPayment(
+          customer,
+          { orderId: order.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        await staffReview(payment.paymentId);
+        return { order, payment };
+      };
+
+      it('restricts the board and status mutations to ADMIN and rejects unknown orders', async () => {
+        const { order } = await paid();
+        await request(app.getHttpServer())
+          .patch(`/admin/orders/${order.orderId}/status`)
+          .send({ status: 'PREPARING' })
+          .expect(401);
+        await advance(order.orderId, 'PREPARING', token).expect(403);
+        await list(undefined, token).expect(403);
+        await request(app.getHttpServer())
+          .get('/admin/orders?status=PAID')
+          .expect(401);
+        await advance('ORD-missing', 'PREPARING').expect(404);
+        expect((await getOrder(order.orderId)).status).toBe('PAID');
+      });
+
+      it.each([
+        'PAID',
+        'CANCELLED',
+        'PENDING',
+        'PAYMENT_FAILED',
+        'UNKNOWN',
+        '',
+      ])(
+        'rejects target %s instead of bypassing payment or cancellation APIs',
+        async (target) => {
+          const created = await create();
+          await advance(created.orderId, target).expect(400);
+          expect((await getOrder(created.orderId)).status).toBe('PENDING');
+          expect((await stock()).quantity).toBe(980);
+        },
+      );
+
+      it('validates list filters and keeps unpaid cancellation requests separate from preparation orders', async () => {
+        for (const query of [
+          'status=CANCELLED',
+          'status=PENDING',
+          'status=PAID,BOGUS',
+          'status=',
+          'status=READY&cancelRequestStatus=PENDING',
+          'cancelRequestStatus=ALL',
+        ])
+          await list(query).expect(400);
+        const waiting = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: waiting.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.reportPaid(userId, payment.paymentId);
+        await orders.requestCancellation(
+          userId,
+          waiting.orderId,
+          'Waiting customer request',
+        );
+        const first = await paid();
+        const second = await paid();
+        await advance(second.order.orderId, 'PREPARING').expect(200);
+        expect(
+          (await list().expect(200)).body.map(
+            (entry: { id: string }) => entry.id,
+          ),
+        ).toEqual([first.order.orderId, second.order.orderId]);
+        expect(
+          (await list('status=PREPARING').expect(200)).body.map(
+            (entry: { id: string }) => entry.id,
+          ),
+        ).toEqual([second.order.orderId]);
+        expect(
+          (await list('cancelRequestStatus=PENDING').expect(200)).body.map(
+            (entry: { id: string }) => entry.id,
+          ),
+        ).toEqual([waiting.orderId]);
+      });
+
+      it('advances all stages without changing money, paid payment, stock, benefits or deadline, and removes COMPLETED from the board', async () => {
+        const { order, payment } = await paid(userId, true);
+        const before = await getOrder(order.orderId);
+        const version = (await stock()).version;
+        for (const target of ['PREPARING', 'READY', 'COMPLETED']) {
+          const result = await advance(order.orderId, target).expect(200);
+          expect(result.body).toMatchObject({
+            status: target,
+            total: before.total,
+            subtotal: before.subtotal,
+            discount: before.discount,
+            voucherCode: before.voucherCode,
+            pointsEarned: before.pointsEarned,
+            pointsAwardedAt: before.pointsAwardedAt!.toISOString(),
+            expiresAt: before.expiresAt.toISOString(),
+            canCancelImmediately: false,
+            canRequestCancellation: false,
+          });
+          await advance(order.orderId, target).expect(200);
+          expect((await stock()).quantity).toBe(980);
+          expect((await stock()).version).toBe(version);
+          expect(
+            (await database.getRepository(User).findOneByOrFail({ id: userId }))
+              .loyaltyPoints,
+          ).toBe(3);
+          expect(
+            (
+              await database
+                .getRepository(VoucherUsage)
+                .findOneByOrFail({ orderId: order.orderId })
+            ).status,
+          ).toBe('USED');
+          expect(
+            (
+              await database
+                .getRepository(Payment)
+                .findOneByOrFail({ id: payment.paymentId })
+            ).status,
+          ).toBe('SUCCESS');
+          const own = await request(app.getHttpServer())
+            .get(`/orders/${order.orderId}`)
+            .set('Authorization', `Bearer ${token}`)
+            .expect(200);
+          expect(own.body.status).toBe(target);
+        }
+        expect((await list().expect(200)).body).toEqual([]);
+        const history = await request(app.getHttpServer())
+          .get('/orders/me')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(history.body[0].status).toBe('COMPLETED');
+      });
+
+      it('rejects skipped, reversed and stale transitions without moving an already advanced order backwards', async () => {
+        const { order } = await paid();
+        await advance(order.orderId, 'READY').expect(400);
+        await advance(order.orderId, 'COMPLETED').expect(400);
+        await advance(order.orderId, 'PREPARING').expect(200);
+        await advance(order.orderId, 'COMPLETED').expect(400);
+        await advance(order.orderId, 'READY').expect(200);
+        await advance(order.orderId, 'PREPARING').expect(400);
+        await advance(order.orderId, 'COMPLETED').expect(200);
+        await advance(order.orderId, 'READY').expect(400);
+        expect((await getOrder(order.orderId)).status).toBe('COMPLETED');
+      });
+
+      it('serializes concurrent duplicate staff actions at each stage', async () => {
+        const { order } = await paid();
+        for (const target of ['PREPARING', 'READY', 'COMPLETED']) {
+          const responses = await Promise.all([
+            advance(order.orderId, target),
+            advance(order.orderId, target),
+          ]);
+          expect(responses.map((entry) => entry.status)).toEqual([200, 200]);
+          expect((await getOrder(order.orderId)).status).toBe(target);
+        }
+        expect((await stock()).version).toBe(2);
+      });
+
+      it('blocks preparation until staff resolve a cancellation request and prevents cancellations after preparation', async () => {
+        const { order } = await paid();
+        await orders.requestCancellation(
+          userId,
+          order.orderId,
+          'Please cancel',
+        );
+        const pending = await getOrder(order.orderId);
+        const blocked = await advance(order.orderId, 'PREPARING').expect(409);
+        expect(blocked.body.code).toBe('CANCELLATION_REQUEST_PENDING');
+        expect((await list().expect(200)).body[0].cancelRequest.status).toBe(
+          'PENDING',
+        );
+        await orders.reviewCancellation(
+          adminId,
+          order.orderId,
+          pending.cancelRequestId!,
+          'REJECTED',
+          'Continue order',
+        );
+        await advance(order.orderId, 'PREPARING').expect(200);
+        for (const target of ['READY', 'COMPLETED']) {
+          await advance(order.orderId, target).expect(200);
+          await request(app.getHttpServer())
+            .post(`/orders/${order.orderId}/cancel-request`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'Too late' })
+            .expect(409);
+          await request(app.getHttpServer())
+            .post(`/orders/${order.orderId}/cancel`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({})
+            .expect(400);
+        }
+      });
+
+      it('serializes the preparation API against a new cancellation request', async () => {
+        const { order } = await paid();
+        const results = await Promise.all([
+          advance(order.orderId, 'PREPARING'),
+          request(app.getHttpServer())
+            .post(`/orders/${order.orderId}/cancel-request`)
+            .set('Authorization', `Bearer ${token}`)
+            .send({ reason: 'Concurrent request' }),
+        ]);
+        expect(
+          results.map((entry) => entry.status).sort((a, b) => a - b),
+        ).toEqual([200, 409]);
+        const current = await getOrder(order.orderId);
+        expect(current.status === 'PREPARING').toBe(
+          current.cancelRequestStatus !== 'PENDING',
+        );
+        expect((await stock()).quantity).toBe(980);
+      });
+
+      it('never starts an unpaid or cancelled order and commits expiry before rejecting a stale action', async () => {
+        const created = await create();
+        await advance(created.orderId, 'PREPARING').expect(400);
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: created.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        await staffReview(payment.paymentId, 'FAILED');
+        await advance(created.orderId, 'PREPARING').expect(400);
+        await expire(created.orderId);
+        await advance(created.orderId, 'PREPARING').expect(409);
+        expect((await getOrder(created.orderId)).status).toBe('CANCELLED');
+        expect((await stock()).quantity).toBe(1000);
+        await advance(created.orderId, 'PREPARING').expect(400);
+        expect((await stock()).version).toBe(3);
+      });
+
+      it('lists all customers in FIFO order and retains saved item names even after the catalog changes', async () => {
+        const first = await paid();
+        const second = await paid(adminId);
+        const product = await database
+          .getRepository(Product)
+          .findOneByOrFail({ id: '1' });
+        try {
+          await database
+            .getRepository(Product)
+            .update('1', { name: 'Changed catalog name' });
+          const response = await list().expect(200);
+          expect(response.headers['cache-control']).toBe('private, no-store');
+          expect(
+            response.body.map((entry: { id: string }) => entry.id),
+          ).toEqual([first.order.orderId, second.order.orderId]);
+          expect(response.body[0].items[0].name).toBe(product.name);
+          expect(response.body[1].items[0].name).toBe(product.name);
+          expect(response.body[0]).not.toHaveProperty('userId');
+        } finally {
+          await database
+            .getRepository(Product)
+            .update('1', { name: product.name });
+        }
+      });
+    });
+
     describe('customer and staff cancellation workflow', () => {
       const own = (id: string, bearer = token) =>
         request(app.getHttpServer())

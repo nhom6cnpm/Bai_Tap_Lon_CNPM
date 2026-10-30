@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useOrderClock, useOrderHistory } from "@/hooks/useOrderHistory";
 import { isActive } from "@/lib/orderUtils";
 import { useOrderRewardsSync } from "@/hooks/useRewardsProfile";
+import ReadyOrdersNotice from "./ReadyOrdersNotice";
 import {
   LoginPrompt,
   OrderCard,
@@ -33,6 +34,9 @@ export function OrderHistory() {
   );
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-6 sm:py-9">
+      <ReadyOrdersNotice
+        orders={query.authenticated && !query.isError ? orders : []}
+      />
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-stone-900 sm:text-3xl">

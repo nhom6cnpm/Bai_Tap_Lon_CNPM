@@ -190,9 +190,12 @@ test("staff see a reported cancellation, reject with a reason and approve the ne
     await page.goto(`/pay/${created.paymentId}`);
     await sendRequest(page, "Khách cần đổi thời gian");
     await expect(board.getByText("Có 1 yêu cầu hủy mới.")).toBeVisible();
-    const card = board.getByRole("article").filter({
-      has: board.getByRole("heading", { name: created.id, exact: true }),
-    });
+    const card = board
+      .getByRole("region", { name: "Yêu cầu hủy đơn", exact: true })
+      .getByRole("article")
+      .filter({
+        has: board.getByRole("heading", { name: created.id, exact: true }),
+      });
     await expect(
       card.getByText("Lý do: Khách cần đổi thời gian"),
     ).toBeVisible();
@@ -269,9 +272,12 @@ test("approved PAID cancellation reverses points while keeping price and success
     const board = await staff.newPage();
     board.on("dialog", (dialog) => dialog.accept());
     await board.goto("/admin/orders");
-    const card = board.getByRole("article").filter({
-      has: board.getByRole("heading", { name: created.id, exact: true }),
-    });
+    const card = board
+      .getByRole("region", { name: "Yêu cầu hủy đơn", exact: true })
+      .getByRole("article")
+      .filter({
+        has: board.getByRole("heading", { name: created.id, exact: true }),
+      });
     await expect(
       card.getByText("Hệ thống không tự hoàn tiền.", { exact: false }),
     ).toBeVisible();
