@@ -45,7 +45,7 @@ export class Order {
 
   @Column({
     type: 'timestamptz',
-    default: () => "CURRENT_TIMESTAMP + INTERVAL '5 minutes'",
+    default: () => "CURRENT_TIMESTAMP + INTERVAL '15 minutes'",
   })
   expiresAt!: Date;
 

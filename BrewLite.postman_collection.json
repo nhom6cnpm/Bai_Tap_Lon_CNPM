@@ -4,10 +4,22 @@
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
-		{ "key": "voucherCode", "value": "<MA_NHOM_DA_CHOT>" },
-		{ "key": "task10dOrderId", "value": "<ORDER_ID>" },
-		{ "key": "task10dToken", "value": "<YOUR_JWT_TOKEN>" },
-		{ "key": "task10dKey", "value": "task10d-review-001" }
+		{
+			"key": "voucherCode",
+			"value": "<MA_NHOM_DA_CHOT>"
+		},
+		{
+			"key": "task10dOrderId",
+			"value": "<ORDER_ID>"
+		},
+		{
+			"key": "task10dToken",
+			"value": "<YOUR_JWT_TOKEN>"
+		},
+		{
+			"key": "task10dKey",
+			"value": "task10d-review-001"
+		}
 	],
 	"item": [
 		{
@@ -17,27 +29,55 @@
 					"name": "Quote cart and list public vouchers (does not reserve stock)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
 						"url": "http://localhost:3001/vouchers/quote",
-						"body": { "mode": "raw", "raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }]\n}" }
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }]\n}"
+						}
 					}
 				},
 				{
 					"name": "Validate an existing voucher and quote discounted total",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
 						"url": "http://localhost:3001/vouchers/quote",
-						"body": { "mode": "raw", "raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}" }
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}"
+						}
 					}
 				},
 				{
 					"name": "Create order with a voucher snapshot (requires a valid active code)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{task10dToken}}" }],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{task10dToken}}"
+							}
+						],
 						"url": "http://localhost:3001/orders",
-						"body": { "mode": "raw", "raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}" }
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}"
+						}
 					}
 				}
 			]
@@ -56,7 +96,12 @@
 					"name": "Cart Availability (Shared Ingredients)",
 					"request": {
 						"method": "POST",
-						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"items\": [\n    { \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 3 },\n    { \"productId\": \"2\", \"size\": \"L\", \"toppingIds\": [\"cream\"], \"qty\": 1 }\n  ]\n}"
@@ -125,6 +170,23 @@
 					}
 				},
 				{
+					"name": "Login (Password Not String - 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "http://localhost:3001/auth/login",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@gmail.com\",\n    \"password\": 123456\n}"
+						}
+					}
+				},
+				{
 					"name": "Get Profile",
 					"request": {
 						"method": "GET",
@@ -147,7 +209,10 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer <YOUR_JWT_TOKEN>" }
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
 						],
 						"url": "http://localhost:3001/orders/me",
 						"description": "Task 9: own orders, newest first; [] for no orders, 401 for invalid/deleted-user session. Includes item display/price snapshots, status, cancellation reason, expiresAt, serverTime, canPay and actual payment method. Cache-Control: private, no-store."
@@ -158,7 +223,10 @@
 					"request": {
 						"method": "GET",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer <YOUR_JWT_TOKEN>" }
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
 						],
 						"url": "http://localhost:3001/orders/<ORDER_ID>",
 						"description": "Task 9: the same DTO as one history entry. Unknown and another user's order both return 404. Confirmation UI must require PAID; canPay is true only for PENDING/PAYMENT_FAILED before the original backend expiry."
@@ -169,7 +237,10 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Authorization", "value": "Bearer <YOUR_JWT_TOKEN>" }
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
 						],
 						"url": "http://localhost:3001/orders/<ORDER_ID>/cancel",
 						"description": "Task 10c: cancel an owned PENDING/PAYMENT_FAILED/PAID order. Returns CANCELLED, cancelReason, cancelledAt and expiresAt. Repeat requests do not refund stock twice."
@@ -244,16 +315,25 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Content-Type", "value": "application/json" },
-							{ "key": "Authorization", "value": "Bearer {{task10dToken}}" },
-							{ "key": "Idempotency-Key", "value": "{{task10dKey}}" }
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{task10dToken}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{task10dKey}}"
+							}
 						],
 						"url": "http://localhost:3001/payments",
 						"body": {
 							"mode": "raw",
 							"raw": "{\n  \"orderId\": \"{{task10dOrderId}}\",\n  \"method\": \"WALLET\"\n}"
 						},
-						"description": "Set task10dOrderId, task10dToken and task10dKey in collection variables. Send twice with the same variables: both return the same paymentId/gatewayUrl, including after payment is processed. A replay does not extend expiry or authorize another charge. After a failed attempt, use a new key to deliberately start a new attempt on the same unexpired order."
+						"description": "Set task10dOrderId, task10dToken and task10dKey in collection variables. Send twice with the same variables: both return the same paymentId, including after payment is processed. A replay does not extend expiry or authorize another charge. After a failed attempt, use a new key to deliberately start a new attempt on the same unexpired order."
 					}
 				},
 				{
@@ -261,9 +341,18 @@
 					"request": {
 						"method": "POST",
 						"header": [
-							{ "key": "Content-Type", "value": "application/json" },
-							{ "key": "Authorization", "value": "Bearer {{task10dToken}}" },
-							{ "key": "Idempotency-Key", "value": "{{task10dKey}}" }
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{task10dToken}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{task10dKey}}"
+							}
 						],
 						"url": "http://localhost:3001/payments",
 						"body": {
@@ -333,62 +422,119 @@
 					}
 				},
 				{
-					"name": "Mock Gateway - Payment Info",
+					"name": "Report Paid (Tôi đã chuyển tiền)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/payments/<PAYMENT_ID>/report-paid"
+					}
+				}
+			]
+		},
+		{
+			"name": "Admin - Xác nhận thanh toán",
+			"item": [
+				{
+					"name": "Login Admin",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "http://localhost:3001/auth/login",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"admin@brewlite.vn\",\n    \"password\": \"admin123\"\n}"
+						}
+					}
+				},
+				{
+					"name": "List Payments Waiting (ACTIVE)",
 					"request": {
 						"method": "GET",
-						"header": [],
-						"url": "http://localhost:3001/mock-gateway/<PAYMENT_ID>"
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/payments"
 					}
 				},
 				{
-					"name": "Mock Gateway - Confirm SUCCESS",
+					"name": "List Payments By Order (QR)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/payments?status=ALL&orderId=<ORDER_ID>"
+					}
+				},
+				{
+					"name": "Confirm Payment (order -> PAID)",
 					"request": {
 						"method": "POST",
 						"header": [
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
 							}
 						],
-						"url": "http://localhost:3001/mock-gateway/<PAYMENT_ID>/confirm",
+						"url": "http://localhost:3001/admin/payments/<PAYMENT_ID>/confirm",
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"result\": \"SUCCESS\"\n}"
+							"raw": "{}"
 						}
 					}
 				},
 				{
-					"name": "Mock Gateway - Confirm FAILED",
+					"name": "Reject Payment (order -> PAYMENT_FAILED)",
 					"request": {
 						"method": "POST",
 						"header": [
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
 							}
 						],
-						"url": "http://localhost:3001/mock-gateway/<PAYMENT_ID>/confirm",
+						"url": "http://localhost:3001/admin/payments/<PAYMENT_ID>/reject",
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"result\": \"FAILED\"\n}"
+							"raw": "{\n    \"note\": \"Chưa nhận được tiền\"\n}"
 						}
 					}
 				},
 				{
-					"name": "Callback (Invalid Signature - 400)",
+					"name": "List Payments As Customer (403)",
 					"request": {
-						"method": "POST",
+						"method": "GET",
 						"header": [
 							{
-								"key": "Content-Type",
-								"value": "application/json"
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
 							}
 						],
-						"url": "http://localhost:3001/payments/callback",
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"paymentId\": \"<PAYMENT_ID>\",\n    \"result\": \"SUCCESS\",\n    \"signature\": \"invalid\"\n}"
-						}
+						"url": "http://localhost:3001/admin/payments"
 					}
 				}
 			]

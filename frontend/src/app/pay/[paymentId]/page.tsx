@@ -2,32 +2,29 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { formatPrice } from "@/lib/formatPrice";
 import {
-  confirmGatewayPayment,
-  getGatewayDetails,
   getPayment,
   PaymentApiError,
-  type GatewayResult,
+  reportPaid,
   type PaymentDetails,
 } from "@/lib/payments/api";
 import {
   clearActiveCheckout,
-  getCartFingerprint,
   getCheckout,
-  getPaymentSession,
+  getCartFingerprint,
   removeAttempt,
-  savePaymentSession,
-  type PaymentSession,
 } from "@/lib/payments/storage";
-import { ORDER_PAYMENT_TIMEOUT_MS } from "@/lib/payments/timeout";
 import { useCart } from "@/store/useCart";
 import { useOrderClock } from "@/hooks/useOrderHistory";
-import { formatRemaining } from "@/lib/orderUtils";
+import { useAuth } from "@/hooks/useAuth";
+import { getStoredToken } from "@/lib/auth";
+import { useHydrated } from "@/hooks/useHydrated";
 
-const POLL_INTERVAL_MS = 2500;
+// Customer screen asks the backend again every few seconds until staff decide
+const POLL_INTERVAL_MS = 3000;
 
 function publicAppUrl(): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL?.trim();
@@ -47,61 +44,95 @@ function publicAppUrl(): string {
   }
 }
 
-export default function PaymentGatewayPage() {
+function formatRemaining(milliseconds: number): string {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+export default function PaymentPage() {
   const { paymentId } = useParams<{ paymentId: string }>();
+  const { token } = useAuth();
+  const hydrated = useHydrated();
+  if (!hydrated)
+    return (
+      <p role="status" className="p-8">
+        Đang tải thanh toán…
+      </p>
+    );
+  if (!token)
+    return (
+      <section className="p-8 text-center">
+        <p>Vui lòng đăng nhập để xem thanh toán.</p>
+        <Link
+          className="underline"
+          href={`/login?redirect=${encodeURIComponent(`/pay/${paymentId}`)}`}
+        >
+          Đăng nhập lại
+        </Link>
+      </section>
+    );
+  return <PaymentSession key={`${token}:${paymentId}`} paymentId={paymentId} />;
+}
+
+function PaymentSession({ paymentId }: { paymentId: string }) {
   const router = useRouter();
-  const [session, setSession] = useState<PaymentSession | null>(null);
   const [details, setDetails] = useState<PaymentDetails | null>(null);
-  const [receivedAt, setReceivedAt] = useState(0);
-  const [ready, setReady] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
   const [actionError, setActionError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [timedOut, setTimedOut] = useState(false);
-  const [cardNumber, setCardNumber] = useState("");
+  const [receivedAt, setReceivedAt] = useState(0);
+  const now = useOrderClock(details?.serverTime, receivedAt);
+  const { token } = useAuth();
+  const mounted = useRef(true);
   const [appUrl, setAppUrl] = useState("");
   const checking = useRef(false);
-  const completed = useRef(false);
-  const now = useOrderClock(details?.serverTime, receivedAt);
-  const remainingForOrder = details
-    ? Date.parse(details.expiresAt) - now
-    : null;
-  const orderExpired =
-    !!details &&
-    details.status !== "SUCCESS" &&
-    (details.orderStatus === "CANCELLED" ||
-      (remainingForOrder !== null && remainingForOrder <= 0));
+  const finished = useRef(false);
+
+  const applyDetails = useCallback(
+    (payment: PaymentDetails) => {
+      setDetails(payment);
+      setReceivedAt(Date.now());
+      if (finished.current) return;
+      if (
+        payment.status === "SUCCESS" &&
+        ["PAID", "PREPARING", "READY", "COMPLETED"].includes(
+          payment.orderStatus ?? "",
+        )
+      ) {
+        // Paid: only now is the cart emptied
+        finished.current = true;
+        const checkout = getCheckout(payment.orderId);
+        if (
+          checkout?.cartFingerprint ===
+          getCartFingerprint(useCart.getState().items)
+        )
+          useCart.getState().clear();
+        clearActiveCheckout(payment.orderId);
+        removeAttempt(payment.orderId, payment.method);
+        router.replace(
+          `/orders/${encodeURIComponent(payment.orderId)}${payment.orderStatus === "PAID" ? "/confirmation" : ""}`,
+        );
+      } else if (payment.status === "FAILED") {
+        // Rejected: cart kept, a new attempt (new Idempotency-Key) is allowed
+        finished.current = true;
+        removeAttempt(payment.orderId, payment.method);
+      }
+    },
+    [router],
+  );
 
   const refreshStatus = useCallback(async () => {
     if (checking.current) return;
     checking.current = true;
+    const requestToken = getStoredToken();
     try {
       const payment = await getPayment(paymentId);
-      setDetails(payment);
-      setReceivedAt(Date.now());
+      if (!mounted.current || getStoredToken() !== requestToken) return;
+      applyDetails(payment);
       setError("");
       setNeedsLogin(false);
-      if (payment.status === "SUCCESS" && !completed.current) {
-        completed.current = true;
-        const checkout = getCheckout(payment.orderId);
-        if (
-          checkout &&
-          checkout.cartFingerprint ===
-            getCartFingerprint(useCart.getState().items)
-        )
-          useCart.getState().clear();
-        clearActiveCheckout(payment.orderId);
-        const stored = getPaymentSession(paymentId);
-        if (stored) removeAttempt(stored.orderId, stored.method);
-        router.replace(
-          `/orders/${encodeURIComponent(payment.orderId)}/confirmation`,
-        );
-      }
-      if (payment.status === "FAILED") {
-        const stored = getPaymentSession(paymentId);
-        if (stored) removeAttempt(stored.orderId, stored.method);
-      }
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -111,131 +142,86 @@ export default function PaymentGatewayPage() {
       setNeedsLogin(cause instanceof PaymentApiError && cause.status === 401);
     } finally {
       checking.current = false;
+      setLoaded(true);
     }
-  }, [paymentId, router]);
+  }, [paymentId, applyDetails]);
 
   useEffect(() => {
-    let active = true;
+    mounted.current = true;
     const initial = window.setTimeout(() => {
       setAppUrl(publicAppUrl());
-      const stored = getPaymentSession(paymentId);
-      if (stored) {
-        setSession(stored);
-        setReady(true);
-        void refreshStatus();
-        return;
-      }
-      void getGatewayDetails(paymentId)
-        .then((gateway) => {
-          if (!active) return;
-          const recovered: PaymentSession = {
-            paymentId,
-            orderId: gateway.orderId,
-            method: gateway.method,
-            amount: gateway.amount,
-            startedAt: Date.now(),
-          };
-          savePaymentSession(recovered);
-          setSession(recovered);
-          void refreshStatus();
-        })
-        .catch((cause) => {
-          if (active)
-            setError(
-              cause instanceof Error
-                ? cause.message
-                : "Không tải được phiên thanh toán.",
-            );
-        })
-        .finally(() => {
-          if (active) setReady(true);
-        });
+      void refreshStatus();
     }, 0);
     return () => {
-      active = false;
+      mounted.current = false;
       window.clearTimeout(initial);
     };
-  }, [paymentId, refreshStatus]);
+  }, [refreshStatus]);
+
+  const deadline = details?.expiresAt ? Date.parse(details.expiresAt) : NaN;
+  const remaining =
+    Number.isFinite(deadline) && now !== null ? deadline - now : null;
+  const waiting =
+    details?.status === "PENDING" || details?.status === "CUSTOMER_REPORTED";
+  const orderClosed = details?.orderStatus === "CANCELLED";
 
   useEffect(() => {
-    if (
-      !session ||
-      details?.status === "SUCCESS" ||
-      details?.status === "FAILED" ||
-      timedOut ||
-      orderExpired
-    )
-      return;
-    const deadlineRemaining = details
-      ? Date.parse(details.expiresAt) -
-        Date.parse(details.serverTime) -
-        Math.max(0, Date.now() - receivedAt)
-      : Infinity;
-    const remaining = Math.min(
-      ORDER_PAYMENT_TIMEOUT_MS - (Date.now() - session.startedAt),
-      deadlineRemaining,
+    if (!waiting || orderClosed) return;
+    const poll = window.setInterval(
+      () => void refreshStatus(),
+      POLL_INTERVAL_MS,
     );
-    const poll =
-      remaining > 0
-        ? window.setInterval(() => void refreshStatus(), POLL_INTERVAL_MS)
-        : null;
-    const timeout = window.setTimeout(
-      () => setTimedOut(true),
-      Math.max(0, remaining),
-    );
-    return () => {
-      if (poll !== null) window.clearInterval(poll);
-      window.clearTimeout(timeout);
-    };
-  }, [session, details, refreshStatus, timedOut, orderExpired, receivedAt]);
+    return () => window.clearInterval(poll);
+  }, [waiting, orderClosed, refreshStatus]);
 
-  async function submitResult(result: GatewayResult) {
+  async function handleReportPaid() {
     if (
       busy ||
       details?.status !== "PENDING" ||
       details.orderStatus !== "PENDING" ||
-      orderExpired
+      (remaining !== null && remaining <= 0) ||
+      !token
     )
       return;
     setBusy(true);
     setActionError("");
     try {
-      await confirmGatewayPayment(paymentId, result);
-      await refreshStatus();
+      const requestToken = getStoredToken();
+      const payment = await reportPaid(paymentId);
+      if (mounted.current && getStoredToken() === requestToken)
+        applyDetails(payment);
     } catch (cause) {
       setActionError(
         cause instanceof Error
           ? cause.message
-          : "Không gửi được kết quả thanh toán.",
+          : "Không gửi được thông báo. Vui lòng thử lại.",
       );
     } finally {
       setBusy(false);
     }
   }
 
-  function submitCard(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!/^\d{12,19}$/.test(cardNumber.replace(/\s/g, ""))) {
-      setActionError("Vui lòng nhập 12–19 chữ số thẻ giả để mô phỏng.");
-      return;
-    }
-    setCardNumber("");
-    void submitResult("SUCCESS");
-  }
-
-  if (!ready)
+  if (!loaded)
     return (
       <p className="mx-auto max-w-2xl px-4 py-12 text-stone-600">
-        Đang mở cổng thanh toán…
+        Đang tải phiên thanh toán…
       </p>
     );
-  if (!session) {
+  if (!details) {
     return (
       <section className="mx-auto max-w-2xl px-4 py-12 text-center">
         <h1 className="text-2xl font-bold">Không mở được phiên thanh toán</h1>
         <p role="alert" className="mt-3 text-red-700">
           {error}
         </p>
+        {needsLogin && (
+          <Link
+            href={`/login?redirect=${encodeURIComponent(`/pay/${paymentId}`)}`}
+            className="mt-4 block font-semibold text-amber-800 underline"
+          >
+            Đăng nhập lại
+          </Link>
+        )}
         <Link
           href="/cart"
           className="mt-6 inline-block font-semibold text-amber-800 underline"
@@ -246,37 +232,33 @@ export default function PaymentGatewayPage() {
     );
   }
 
-  const qrUrl = appUrl
-    ? `${appUrl}/mock-gateway/${encodeURIComponent(paymentId)}`
-    : "";
-  const qrNeedsLanAddress =
-    qrUrl && ["localhost", "127.0.0.1"].includes(new URL(qrUrl).hostname);
-  const status = details?.status;
-
-  if (details?.status === "SUCCESS") {
+  if (details.status === "SUCCESS" && !orderClosed)
     return (
-      <p
-        role="status"
-        className="mx-auto max-w-xl px-4 py-12 text-center text-stone-600"
-      >
-        Đang mở xác nhận đơn hàng…
+      <p role="status" className="mx-auto max-w-2xl px-4 py-12">
+        Đang mở đơn hàng đã thanh toán…
       </p>
     );
-  }
 
-  if (details?.status === "FAILED") {
+  if (details.status === "FAILED") {
     return (
       <section className="mx-auto max-w-xl px-4 py-12 text-center">
         <div className="rounded-3xl border border-red-200 bg-white p-8 shadow-sm">
           <h1 className="text-3xl font-bold text-red-800">
             Thanh toán thất bại
           </h1>
-          <p className="mt-3 break-all text-stone-600">
-            {orderExpired
-              ? "Đơn đã hết hạn hoặc đã bị hủy. Giỏ hàng vẫn được giữ nguyên."
-              : `Giỏ hàng của bạn vẫn được giữ nguyên. Bạn có thể thử lại trên đơn ${details.orderId}.`}
+          <p className="mt-3 text-stone-600">
+            Nhân viên chưa xác nhận được khoản thanh toán của đơn{" "}
+            {details.orderId}.
           </p>
-          {!orderExpired && (
+          {details.reviewNote && (
+            <p className="mt-3 rounded-xl bg-red-50 p-3 text-sm text-red-800">
+              Lý do: {details.reviewNote}
+            </p>
+          )}
+          <p className="mt-3 text-stone-600">
+            Giỏ hàng của bạn vẫn được giữ nguyên.
+          </p>
+          {!orderClosed && (remaining === null || remaining > 0) && (
             <button
               type="button"
               onClick={() =>
@@ -286,14 +268,6 @@ export default function PaymentGatewayPage() {
             >
               Thử lại
             </button>
-          )}
-          {orderExpired && (
-            <Link
-              href={`/orders/${encodeURIComponent(details.orderId)}`}
-              className="mt-5 inline-block font-semibold text-amber-800 underline"
-            >
-              Xem đơn hàng
-            </Link>
           )}
           <Link
             href="/cart"
@@ -306,75 +280,152 @@ export default function PaymentGatewayPage() {
     );
   }
 
+  if (orderClosed) {
+    return (
+      <section className="mx-auto max-w-xl px-4 py-12 text-center">
+        <div className="rounded-3xl border border-stone-200 bg-white p-8 shadow-sm">
+          <h1 className="text-2xl font-bold">
+            Đơn hàng đã hết hạn hoặc bị hủy
+          </h1>
+          <p className="mt-3 text-stone-600">
+            Giỏ hàng của bạn vẫn được giữ nguyên, vui lòng đặt lại.
+          </p>
+          <Link
+            href="/cart"
+            className="mt-6 inline-block rounded-full bg-amber-800 px-6 py-3 font-semibold text-white"
+          >
+            Về giỏ hàng
+          </Link>
+        </div>
+      </section>
+    );
+  }
+
+  // QR = order code. Staff scan it at the counter to open this order on the admin page.
+  const qrValue = appUrl
+    ? `${appUrl}/admin/payments?orderId=${encodeURIComponent(details.orderId)}`
+    : details.orderId;
+  const reported = details.status === "CUSTOMER_REPORTED";
+  const isWallet = details.method === "WALLET";
+
   return (
     <section className="mx-auto max-w-2xl px-4 py-8 sm:py-12">
       <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
         <p className="text-sm font-semibold uppercase tracking-widest text-amber-800">
-          BrewLite Pay
+          BrewLite · Thanh toán
         </p>
         <h1 className="mt-2 text-3xl font-bold">
-          {session.method === "WALLET"
-            ? "Thanh toán bằng Ví"
-            : "Thanh toán bằng Thẻ"}
+          {isWallet ? "Chuyển khoản / Ví điện tử" : "Thanh toán thẻ tại quầy"}
         </h1>
         <div className="mt-6 flex items-center justify-between rounded-2xl bg-amber-50 p-4">
-          <span className="min-w-0 break-all">Đơn {session.orderId}</span>
+          <span className="min-w-0 flex-1 break-all">
+            Đơn {details.orderId}
+          </span>
           <strong className="shrink-0 text-xl text-amber-900">
-            {formatPrice(details?.amount ?? session.amount)}
+            {formatPrice(details.amount)}
           </strong>
         </div>
-        {session.method === "WALLET" ? (
-          <div className="mt-7 text-center">
-            {qrUrl && (
-              <div className="inline-block rounded-2xl border border-stone-200 bg-white p-4">
-                <QRCodeSVG
-                  value={qrUrl}
-                  size={220}
-                  includeMargin
-                  title="Mã QR thanh toán BrewLite Pay"
-                />
-              </div>
-            )}
-            <p className="mt-4 font-semibold">
-              Quét mã bằng điện thoại để thanh toán
-            </p>
-            <p className="mt-2 break-all text-xs text-stone-500">{qrUrl}</p>
-            {qrNeedsLanAddress && (
-              <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-                Mã QR đang dùng địa chỉ localhost. Để quét bằng điện thoại, hãy
-                mở ứng dụng qua địa chỉ mạng của máy tính.
-              </p>
-            )}
-            <p className="mt-3 text-sm text-stone-600">
-              Không có điện thoại? Dùng nút bên dưới để mô phỏng.
-            </p>
-          </div>
-        ) : (
-          <form id="mock-card-form" onSubmit={submitCard} className="mt-7">
-            <label htmlFor="mock-card-number" className="font-semibold">
-              Số thẻ giả
-            </label>
-            <input
-              id="mock-card-number"
-              type="text"
-              inputMode="numeric"
-              autoComplete="off"
-              placeholder="4242 4242 4242 4242"
-              value={cardNumber}
-              onChange={(event) => setCardNumber(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-stone-300 px-4 py-3 focus:outline-2 focus:outline-amber-800"
-            />
-            <p className="mt-2 text-sm text-stone-500">
-              Chỉ mô phỏng thanh toán. Không nhập số thẻ thật.
-            </p>
-          </form>
-        )}
-
-        {!details && !error && (
-          <p role="status" className="mt-5 text-sm text-stone-600">
-            Đang kiểm tra trạng thái thanh toán…
+        {remaining !== null && (
+          <p
+            role="status"
+            className={`mt-3 text-sm font-semibold ${remaining <= 0 ? "text-red-700" : "text-stone-600"}`}
+          >
+            {remaining <= 0
+              ? "Đã quá thời gian chờ thanh toán. Nếu đã trả tiền, vui lòng báo nhân viên."
+              : `Thời gian còn lại: ${formatRemaining(remaining)}`}
           </p>
         )}
+
+        <div className="mt-7 text-center">
+          <div className="inline-block rounded-2xl border border-stone-200 bg-white p-4">
+            <QRCodeSVG
+              value={qrValue}
+              size={200}
+              marginSize={2}
+              title={`Mã QR đơn hàng ${details.orderId}`}
+            />
+          </div>
+          <p className="mt-3 text-sm text-stone-600">
+            Mã QR đơn hàng: nhân viên quét để đối chiếu đơn của bạn.
+          </p>
+        </div>
+
+        <ol className="mt-6 list-decimal space-y-2 pl-5 text-sm text-stone-700">
+          {isWallet ? (
+            <>
+              <li>
+                Chuyển <strong>{formatPrice(details.amount)}</strong> vào tài
+                khoản của cửa hàng với nội dung{" "}
+                <strong className="break-all font-mono">
+                  {details.orderId}
+                </strong>
+                .
+              </li>
+              <li>
+                Bấm <strong>“Tôi đã chuyển tiền”</strong> bên dưới.
+              </li>
+              <li>
+                Chờ nhân viên kiểm tra và xác nhận, màn hình sẽ tự cập nhật.
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                Đưa mã QR hoặc mã đơn{" "}
+                <strong className="break-all font-mono">
+                  {details.orderId}
+                </strong>{" "}
+                cho nhân viên tại quầy.
+              </li>
+              <li>
+                Quẹt thẻ thanh toán{" "}
+                <strong>{formatPrice(details.amount)}</strong>.
+              </li>
+              <li>Nhân viên xác nhận, màn hình sẽ tự cập nhật.</li>
+            </>
+          )}
+        </ol>
+
+        {reported ? (
+          <div
+            role="status"
+            className="mt-7 flex items-center gap-3 rounded-2xl bg-sky-50 p-4 text-sky-900"
+          >
+            <span
+              aria-hidden="true"
+              className="h-5 w-5 animate-spin rounded-full border-2 border-sky-700 border-t-transparent"
+            />
+            <span>
+              <strong>Đang chờ nhân viên xác nhận…</strong>
+              <br />
+              <span className="text-sm">
+                Bạn đã báo chuyển tiền. Không cần bấm lại.
+              </span>
+            </span>
+          </div>
+        ) : (
+          isWallet && (
+            <button
+              type="button"
+              onClick={() => void handleReportPaid()}
+              disabled={
+                busy || needsLogin || (remaining !== null && remaining <= 0)
+              }
+              className="mt-7 w-full rounded-xl bg-amber-800 px-4 py-3 font-bold text-white hover:bg-amber-900 disabled:opacity-50"
+            >
+              {busy ? "Đang gửi…" : "Tôi đã chuyển tiền"}
+            </button>
+          )
+        )}
+        {!reported && !isWallet && (
+          <p
+            role="status"
+            className="mt-7 rounded-2xl bg-stone-50 p-4 text-sm text-stone-700"
+          >
+            Đang chờ nhân viên xác nhận thanh toán tại quầy…
+          </p>
+        )}
+
         {error && (
           <p
             role="alert"
@@ -391,16 +442,6 @@ export default function PaymentGatewayPage() {
             {actionError}
           </p>
         )}
-        {details && (
-          <p
-            role="status"
-            className={`mt-4 text-sm font-semibold ${orderExpired ? "text-red-700" : "text-stone-600"}`}
-          >
-            {orderExpired
-              ? "Đơn đã hết hạn hoặc đã bị hủy. Không thể tiếp tục thanh toán."
-              : `Thời gian còn lại: ${formatRemaining(remainingForOrder ?? 0)}`}
-          </p>
-        )}
         {needsLogin && (
           <Link
             href={`/login?redirect=${encodeURIComponent(`/pay/${paymentId}`)}`}
@@ -409,56 +450,6 @@ export default function PaymentGatewayPage() {
             Đăng nhập lại
           </Link>
         )}
-        {timedOut && (
-          <p role="status" className="mt-5 text-sm text-amber-900">
-            Đã dừng tự kiểm tra sau thời gian chờ. Bạn vẫn có thể kiểm tra thủ
-            công.
-          </p>
-        )}
-        <div className="mt-7 grid gap-3 sm:grid-cols-2">
-          <button
-            type="button"
-            onClick={() => void submitResult("FAILED")}
-            disabled={
-              busy ||
-              status !== "PENDING" ||
-              orderExpired ||
-              details?.orderStatus !== "PENDING"
-            }
-            className="rounded-xl border border-red-300 px-4 py-3 font-semibold text-red-800 disabled:opacity-50"
-          >
-            Giả lập lỗi
-          </button>
-          {session.method === "WALLET" ? (
-            <button
-              type="button"
-              onClick={() => void submitResult("SUCCESS")}
-              disabled={
-                busy ||
-                status !== "PENDING" ||
-                orderExpired ||
-                details?.orderStatus !== "PENDING"
-              }
-              className="rounded-xl bg-amber-800 px-4 py-3 font-semibold text-white disabled:opacity-50"
-            >
-              {busy ? "Đang xử lý…" : "Tôi đã thanh toán"}
-            </button>
-          ) : (
-            <button
-              form="mock-card-form"
-              type="submit"
-              disabled={
-                busy ||
-                status !== "PENDING" ||
-                orderExpired ||
-                details?.orderStatus !== "PENDING"
-              }
-              className="rounded-xl bg-amber-800 px-4 py-3 font-semibold text-white disabled:opacity-50"
-            >
-              {busy ? "Đang xử lý…" : "Xác nhận trả"}
-            </button>
-          )}
-        </div>
         <button
           type="button"
           onClick={() => void refreshStatus()}

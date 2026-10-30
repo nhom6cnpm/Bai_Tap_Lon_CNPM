@@ -4,60 +4,119 @@ import {
   BadRequestException,
   ForbiddenException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
-import * as crypto from 'crypto';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  MoreThan,
+  QueryFailedError,
+  Repository,
+  type FindOptionsWhere,
+} from 'typeorm';
 import { OrdersService } from '../orders/orders.service';
+import { Order } from '../orders/order.entity';
 import type { OrderStatus } from '../orders/order-status';
+import { User } from '../auth/user.entity';
+import { randomUUID } from 'crypto';
+import { PaymentRequestKey } from './entities/payment-request-key.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
-import { PaymentCallbackDto, PaymentResult } from './dto/payment-callback.dto';
-import { Payment, type PaymentStatus } from './entities/payment.entity';
+import type { ListAdminPaymentsDto } from './dto/list-admin-payments.dto';
+import {
+  ACTIVE_PAYMENT_STATUSES,
+  Payment,
+  type PaymentStatus,
+} from './entities/payment.entity';
 
 const UNIQUE_VIOLATION = '23505';
 
+export type PaymentDecision = 'CONFIRM' | 'REJECT';
+
+/**
+ * Task 8 — thanh toán do nhân viên xác nhận (yêu cầu 30/10):
+ * khách chọn phương thức → chuyển tiền → bấm "Tôi đã chuyển tiền" (chỉ báo) →
+ * ADMIN xác nhận (đơn PAID) hoặc từ chối (đơn PAYMENT_FAILED).
+ * Every order status change goes through OrdersService.updateOrderStatus, so the
+ * state machine (assertTransition) still guards every arrow.
+ */
 @Injectable()
 export class PaymentsService {
-  private readonly gatewaySecret: string;
-
   constructor(
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly ordersService: OrdersService,
-    private readonly configService: ConfigService,
     private readonly dataSource: DataSource,
-  ) {
-    const secret = this.configService.get<string>('PAYMENT_GATEWAY_SECRET');
-    if (!secret) {
-      throw new Error(
-        'PAYMENT_GATEWAY_SECRET is required. Please set it in your .env file.',
-      );
-    }
-    this.gatewaySecret = secret;
-  }
+  ) {}
 
-  private toSessionResponse(payment: Payment) {
+  private toView(payment: Payment, order?: Order | null) {
     return {
       paymentId: payment.id,
-      gatewayUrl: payment.gatewayUrl,
+      orderId: payment.orderId,
+      amount: payment.amount,
+      method: payment.method,
       status: payment.status,
+      reportedAt: payment.reportedAt ?? null,
+      reviewNote: payment.reviewNote ?? null,
+      createdAt: payment.createdAt,
+      orderStatus: order?.status ?? null,
+      expiresAt: order?.expiresAt ?? null,
+      serverTime: new Date(),
     };
   }
 
-  private assertSameRequest(
-    payment: Payment,
+  private async lockOrder(manager: EntityManager, orderId: string) {
+    const order = await manager.getRepository(Order).findOne({
+      where: { id: orderId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!order) {
+      throw new NotFoundException(`Không tìm thấy đơn hàng ${orderId}`);
+    }
+    return order;
+  }
+
+  private async lockPayment(manager: EntityManager, paymentId: string) {
+    const payment = await manager.getRepository(Payment).findOne({
+      where: { id: paymentId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!payment) {
+      throw new NotFoundException(
+        `Không tìm thấy phiên thanh toán ${paymentId}`,
+      );
+    }
+    return payment;
+  }
+
+  private assertRequest(
+    key: PaymentRequestKey,
     userId: string,
     dto: CreatePaymentDto,
   ): void {
     if (
-      payment.userId !== userId ||
-      payment.orderId !== dto.orderId ||
-      payment.method !== dto.method
-    ) {
+      key.orderId !== dto.orderId ||
+      key.userId !== userId ||
+      key.method !== dto.method
+    )
       throw new BadRequestException(
         'Idempotency-Key đã được dùng cho yêu cầu thanh toán khác',
       );
-    }
+  }
+
+  private async lockPair(manager: EntityManager, paymentId: string) {
+    const original = await manager
+      .getRepository(Payment)
+      .findOneBy({ id: paymentId });
+    if (!original)
+      throw new NotFoundException('Không tìm thấy phiên thanh toán');
+    // Shared lock order with creation, expiry and cancellation: order, payment, ingredients.
+    const order = await this.lockOrder(manager, original.orderId);
+    const payment = await this.lockPayment(manager, paymentId);
+    return { order, payment };
   }
 
   async createPayment(
@@ -65,234 +124,287 @@ export class PaymentsService {
     dto: CreatePaymentDto,
     idempotencyKey?: string,
   ) {
-    if (!idempotencyKey || !idempotencyKey.trim()) {
-      throw new BadRequestException('Thiếu header Idempotency-Key');
-    }
-    if (idempotencyKey.length > 128) {
-      throw new BadRequestException(
-        'Idempotency-Key không được dài quá 128 ký tự',
-      );
-    }
+    if (!idempotencyKey?.trim() || idempotencyKey.length > 128)
+      throw new BadRequestException('Idempotency-Key phải có 1–128 ký tự');
     try {
-      const saved = await this.dataSource.transaction(async (manager) => {
-        const order = await this.ordersService.lockById(dto.orderId, manager);
-        if (!order)
-          throw new NotFoundException(`Không tìm thấy đơn hàng ${dto.orderId}`);
-        if (order.userId !== userId) {
+      const result = await this.dataSource.transaction(async (manager) => {
+        const order = await this.lockOrder(manager, dto.orderId);
+        if (order.userId !== userId)
           throw new ForbiddenException(
             'Bạn không có quyền thanh toán đơn hàng này',
           );
-        }
+        const keys = manager.getRepository(PaymentRequestKey);
+        const previous = await keys.findOneBy({ id: idempotencyKey });
         const repository = manager.getRepository(Payment);
-        const existing = await repository.findOneBy({ idempotencyKey });
-        if (existing) {
-          this.assertSameRequest(existing, userId, dto);
-          // A replay returns the original session, not permission to pay again.
-          // Expire unpaid orders without renewing their deadline or duplicating a refund.
+        if (previous) {
+          this.assertRequest(previous, userId, dto);
           await this.ordersService.expireIfNeeded(order, manager);
-          return existing;
+          const payment = await repository.findOneBy({
+            id: previous.paymentId,
+          });
+          if (!payment)
+            throw new NotFoundException('Không tìm thấy phiên thanh toán');
+          return this.toView(payment, order);
         }
         if (
           (await this.ordersService.expireIfNeeded(order, manager)) ||
           order.status === 'CANCELLED'
-        ) {
+        )
           return null;
-        }
-        if (!['PENDING', 'PAYMENT_FAILED'].includes(order.status)) {
+        if (!['PENDING', 'PAYMENT_FAILED'].includes(order.status))
           throw new BadRequestException(
             'Đơn hàng này không còn chờ thanh toán',
           );
-        }
-        if (order.status === 'PAYMENT_FAILED') {
-          const retried = await this.ordersService.updateOrderStatus(
-            order.id,
-            'PENDING',
-            manager,
-          );
-          if (retried.status === 'CANCELLED') return null;
-          Object.assign(order, retried);
+        let payment = await repository.findOne({
+          where: {
+            orderId: order.id,
+            status: In([...ACTIVE_PAYMENT_STATUSES]),
+          },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (payment) {
+          if (payment.status === 'PENDING' && payment.method !== dto.method) {
+            payment.method = dto.method;
+            await repository.save(payment);
+          }
         } else {
-          await this.ordersService.ensureInventoryReservation(order, manager);
+          if (order.status === 'PAYMENT_FAILED') {
+            const retried = await this.ordersService.updateOrderStatus(
+              order.id,
+              'PENDING',
+              manager,
+            );
+            if (retried.status === 'CANCELLED') return null;
+            Object.assign(order, retried);
+          } else
+            await this.ordersService.ensureInventoryReservation(order, manager);
+          if (await this.ordersService.expireIfNeeded(order, manager))
+            return null;
+          payment = await repository.save(
+            repository.create({
+              id: `PAY-${randomUUID()}`,
+              orderId: order.id,
+              userId,
+              idempotencyKey,
+              amount: order.total,
+              method: dto.method,
+              status: 'PENDING',
+              reportedAt: null,
+              reviewedAt: null,
+              reviewedBy: null,
+              reviewNote: null,
+            }),
+          );
         }
-        // Reserving a legacy order can wait on stock; recheck its original deadline.
-        if (await this.ordersService.expireIfNeeded(order, manager))
-          return null;
-        const paymentId = `PAY-${crypto.randomUUID()}`;
-        const frontendUrl =
-          this.configService.get<string>('FRONTEND_URL') ||
-          'http://localhost:3000';
-        return manager.save(
-          repository.create({
-            id: paymentId,
+        await keys.save(
+          keys.create({
+            id: idempotencyKey,
+            paymentId: payment.id,
             orderId: order.id,
             userId,
-            idempotencyKey,
-            amount: order.total,
             method: dto.method,
-            status: 'PENDING',
-            gatewayUrl: `${frontendUrl}/mock-gateway/${paymentId}`,
           }),
         );
+        return this.toView(payment, order);
       });
-      // Throw outside the transaction so a timeout and its refund stay committed.
-      if (!saved) throw new BadRequestException('Đơn đã hết hạn');
-      return this.toSessionResponse(saved);
+      // Commit timeout cancellation/refund before returning an error.
+      if (!result) throw new BadRequestException('Đơn đã hết hạn hoặc bị hủy');
+      return result;
     } catch (error) {
       if (
         error instanceof QueryFailedError &&
         (error.driverError as { code?: string })?.code === UNIQUE_VIOLATION
       ) {
-        const winner = await this.paymentRepository.findOneBy({
-          idempotencyKey,
-        });
+        const winner = await this.dataSource
+          .getRepository(PaymentRequestKey)
+          .findOneBy({ id: idempotencyKey });
         if (winner) {
-          this.assertSameRequest(winner, userId, dto);
-          return this.toSessionResponse(winner);
+          this.assertRequest(winner, userId, dto);
+          const payment = await this.paymentRepository.findOneBy({
+            id: winner.paymentId,
+          });
+          const order = await this.orderRepository.findOneBy({
+            id: winner.orderId,
+          });
+          if (payment && order) return this.toView(payment, order);
         }
       }
       throw error;
     }
   }
 
-  async getPaymentById(paymentId: string, userId?: string) {
+  /** Customer reports a transfer; only staff can make the order PAID. */
+  async reportPaid(userId: string, paymentId: string) {
+    const result = await this.dataSource.transaction(async (manager) => {
+      const { payment, order } = await this.lockPair(manager, paymentId);
+      if (payment.userId !== userId)
+        throw new ForbiddenException(
+          'Bạn không có quyền với phiên thanh toán này',
+        );
+      if (
+        (await this.ordersService.expireIfNeeded(order, manager)) ||
+        order.status === 'CANCELLED'
+      )
+        return null;
+      if (
+        order.status !== 'PENDING' ||
+        !ACTIVE_PAYMENT_STATUSES.includes(payment.status)
+      )
+        throw new BadRequestException('Phiên thanh toán không còn chờ xử lý');
+      if (payment.status === 'CUSTOMER_REPORTED')
+        return this.toView(payment, order);
+      payment.status = 'CUSTOMER_REPORTED';
+      payment.reportedAt = await this.ordersService.databaseNow(manager);
+      return this.toView(
+        await manager.getRepository(Payment).save(payment),
+        order,
+      );
+    });
+    if (!result) throw new BadRequestException('Đơn đã hết hạn hoặc bị hủy');
+    return result;
+  }
+
+  /** GET /payments/:id — màn hình khách tự hỏi lại trạng thái (polling). */
+  async getPaymentById(paymentId: string, userId: string) {
     const payment = await this.paymentRepository.findOneBy({ id: paymentId });
     if (!payment) {
       throw new NotFoundException(
         `Không tìm thấy phiên thanh toán ${paymentId}`,
       );
     }
-
-    if (userId && payment.userId !== userId) {
+    if (payment.userId !== userId) {
       throw new ForbiddenException(
         'Bạn không có quyền xem phiên thanh toán này',
       );
     }
-
-    const order = await this.ordersService.findById(payment.orderId);
-    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
-    const serverTime = await this.ordersService.databaseNow(
-      this.dataSource.manager,
-    );
-    return {
-      paymentId: payment.id,
-      orderId: payment.orderId,
-      status: payment.status,
-      amount: payment.amount,
-      method: payment.method,
-      gatewayUrl: payment.gatewayUrl,
-      expiresAt: order.expiresAt,
-      orderStatus: order.status,
-      serverTime,
-    };
-  }
-
-  async getPaymentForGateway(paymentId: string) {
-    const payment = await this.paymentRepository.findOneBy({ id: paymentId });
-    if (!payment) {
-      throw new NotFoundException(
-        `Không tìm thấy phiên thanh toán ${paymentId}`,
-      );
-    }
-    const order = await this.ordersService.findById(payment.orderId);
-    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
-    const serverTime = await this.ordersService.databaseNow(
-      this.dataSource.manager,
-    );
-    return {
-      paymentId: payment.id,
-      orderId: payment.orderId,
-      amount: payment.amount,
-      method: payment.method,
-      status: payment.status,
-      expiresAt: order.expiresAt,
-      orderStatus: order.status,
-      serverTime,
-    };
-  }
-
-  generateSignature(paymentId: string, result: PaymentResult): string {
-    return crypto
-      .createHmac('sha256', this.gatewaySecret)
-      .update(`${paymentId}:${result}`)
-      .digest('hex');
-  }
-
-  verifySignature(
-    paymentId: string,
-    result: PaymentResult,
-    signature: string,
-  ): boolean {
-    const expected = Buffer.from(this.generateSignature(paymentId, result));
-    const received = Buffer.from(signature);
-    // Constant-time comparison to avoid leaking the signature through timing
-    return (
-      expected.length === received.length &&
-      crypto.timingSafeEqual(expected, received)
-    );
-  }
-
-  async processCallback(dto: PaymentCallbackDto) {
-    if (!this.verifySignature(dto.paymentId, dto.result, dto.signature)) {
-      throw new BadRequestException('Chữ ký không hợp lệ (Invalid signature)');
-    }
-    const original = await this.paymentRepository.findOneBy({
-      id: dto.paymentId,
+    const order = await this.orderRepository.findOneBy({
+      id: payment.orderId,
     });
-    if (!original)
-      throw new NotFoundException(
-        `Không tìm thấy phiên thanh toán ${dto.paymentId}`,
-      );
-    const targetOrderStatus: OrderStatus =
-      dto.result === 'SUCCESS' ? 'PAID' : 'PAYMENT_FAILED';
-    const targetPaymentStatus: PaymentStatus =
-      dto.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
-    const outcome = await this.dataSource.transaction(async (manager) => {
-      // Same lock order as checkout/cancellation: order, then payment, then stock.
-      const order = await this.ordersService.lockById(
-        original.orderId,
-        manager,
-      );
-      if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
-      const repository = manager.getRepository(Payment);
-      const payment = await repository.findOne({
-        where: { id: dto.paymentId },
-        lock: { mode: 'pessimistic_write' },
+    return this.toView(payment, order);
+  }
+
+  /** GET /admin/payments — danh sách cho nhân viên (trang admin polling vài giây/lần). */
+  async listForAdmin(query: ListAdminPaymentsDto) {
+    const filter = query.status ?? 'ACTIVE';
+    const where: FindOptionsWhere<Payment> = {};
+    if (filter === 'ACTIVE') {
+      where.status = In([...ACTIVE_PAYMENT_STATUSES]);
+    } else if (filter !== 'ALL') {
+      where.status = filter;
+    }
+    if (query.orderId?.trim()) where.orderId = query.orderId.trim();
+    // Filter before LIMIT: old unpaid sessions must not hide newer live orders.
+    if (filter === 'ACTIVE') {
+      const activeOrders = await this.orderRepository.find({
+        where: {
+          status: 'PENDING',
+          expiresAt: MoreThan(new Date()),
+          ...(query.orderId?.trim() ? { id: query.orderId.trim() } : {}),
+        },
+        select: { id: true },
       });
-      if (!payment)
-        throw new NotFoundException(
-          `Không tìm thấy phiên thanh toán ${dto.paymentId}`,
+      if (!activeOrders.length) return [];
+      where.orderId = In(activeOrders.map((order) => order.id));
+    }
+
+    const payments = await this.paymentRepository.find({
+      where,
+      order: { createdAt: filter === 'ACTIVE' ? 'ASC' : 'DESC' },
+      take: 100,
+    });
+
+    const orderIds = [...new Set(payments.map((p) => p.orderId))];
+    const userIds = [...new Set(payments.map((p) => p.userId))];
+    const [orders, users] = await Promise.all([
+      orderIds.length
+        ? this.orderRepository.find({
+            where: { id: In(orderIds) },
+            relations: { items: true },
+          })
+        : Promise.resolve([] as Order[]),
+      userIds.length
+        ? this.userRepository.find({
+            where: { id: In(userIds) },
+            select: { id: true, email: true },
+          })
+        : Promise.resolve([] as User[]),
+    ]);
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const emailById = new Map(users.map((u) => [u.id, u.email]));
+
+    const rows = payments
+      .filter((payment) => {
+        if (filter !== 'ACTIVE') return true;
+        const order = orderById.get(payment.orderId);
+        return (
+          order?.status === 'PENDING' && order.expiresAt.getTime() > Date.now()
         );
-      if (payment.status !== 'PENDING') {
+      })
+      .map((payment) => {
+        const order = orderById.get(payment.orderId);
         return {
-          message: 'Callback đã được xử lý trước đó',
-          paymentId: payment.id,
-          status: payment.status,
+          ...this.toView(payment, order),
+          customerEmail: emailById.get(payment.userId) ?? null,
+          itemCount:
+            order?.items?.reduce((sum, item) => sum + item.qty, 0) ?? 0,
+          reviewedAt: payment.reviewedAt ?? null,
         };
-      }
+      });
+
+    // Customers who already reported a transfer come first
+    if (filter === 'ACTIVE') {
+      rows.sort(
+        (a, b) =>
+          Number(b.status === 'CUSTOMER_REPORTED') -
+          Number(a.status === 'CUSTOMER_REPORTED'),
+      );
+    }
+    return rows;
+  }
+
+  /**
+   * POST /admin/payments/:id/confirm | /reject — nhân viên quyết định.
+   * Payment and order change together in one transaction; assertTransition
+   * rejects e.g. confirming an order that was already CANCELLED.
+   */
+  async review(
+    adminId: string,
+    paymentId: string,
+    decision: PaymentDecision,
+    note?: string,
+  ) {
+    const targetPayment: PaymentStatus =
+      decision === 'CONFIRM' ? 'SUCCESS' : 'FAILED';
+    const targetOrder: OrderStatus =
+      decision === 'CONFIRM' ? 'PAID' : 'PAYMENT_FAILED';
+
+    const result = await this.dataSource.transaction(async (manager) => {
+      const { payment, order } = await this.lockPair(manager, paymentId);
+      if (!ACTIVE_PAYMENT_STATUSES.includes(payment.status))
+        return this.toView(payment, order);
       if (
         (await this.ordersService.expireIfNeeded(order, manager)) ||
         order.status === 'CANCELLED'
-      ) {
+      )
         return null;
-      }
-      await this.ordersService.ensureInventoryReservation(order, manager);
+      if (order.status !== 'PENDING')
+        throw new BadRequestException('Đơn không còn chờ xác nhận thanh toán');
       const updated = await this.ordersService.updateOrderStatus(
-        order.id,
-        targetOrderStatus,
+        payment.orderId,
+        targetOrder,
         manager,
       );
       if (updated.status === 'CANCELLED') return null;
-      payment.status = targetPaymentStatus;
-      await repository.save(payment);
-      return {
-        message: 'Xử lý callback thành công',
-        paymentId: payment.id,
-        status: payment.status,
-        orderStatus: targetOrderStatus,
-      };
+      payment.status = targetPayment;
+      payment.reviewedAt = await this.ordersService.databaseNow(manager);
+      payment.reviewedBy = adminId;
+      payment.reviewNote = note?.trim() || null;
+      return this.toView(
+        await manager.getRepository(Payment).save(payment),
+        updated,
+      );
     });
-    if (!outcome)
-      throw new BadRequestException('Đơn đã hết hạn hoặc đã bị hủy');
-    return outcome;
+    if (!result) throw new BadRequestException('Đơn đã hết hạn hoặc bị hủy');
+    return result;
   }
 }

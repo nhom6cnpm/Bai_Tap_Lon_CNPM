@@ -7,7 +7,6 @@ import { ProductsModule } from './products/products.module';
 import { AuthModule } from './auth/auth.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
-import { MockGatewayModule } from './mock-gateway/mock-gateway.module';
 import { Product } from './products/product.entity';
 import { User } from './auth/user.entity';
 import { Order } from './orders/order.entity';
@@ -18,6 +17,7 @@ import { ToppingRecipe } from './inventory/topping-recipe.entity';
 import { Payment } from './payments/entities/payment.entity';
 import { OrderInventoryReservation } from './orders/order-inventory-reservation.entity';
 import { Voucher } from './vouchers/voucher.entity';
+import { PaymentRequestKey } from './payments/entities/payment-request-key.entity';
 
 @Module({
   imports: [
@@ -41,6 +41,7 @@ import { Voucher } from './vouchers/voucher.entity';
           Payment,
           OrderInventoryReservation,
           Voucher,
+          PaymentRequestKey,
         ],
         // Migrations run automatically on app startup (also handles seed order)
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
@@ -53,7 +54,6 @@ import { Voucher } from './vouchers/voucher.entity';
     AuthModule,
     OrdersModule,
     PaymentsModule,
-    MockGatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

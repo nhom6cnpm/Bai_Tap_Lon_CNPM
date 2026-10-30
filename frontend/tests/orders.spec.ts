@@ -1,3 +1,4 @@
+import { reviewAsStaff } from "./staff";
 import {
   expect,
   test,
@@ -342,47 +343,50 @@ test("live wallet QR on a second device leads to own PAID confirmation and histo
   ).toBe(1);
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
   await expect(page).toHaveURL(/\/pay\/PAY-/);
-  const qr = page.getByText(/^http.*\/mock-gateway\//).first();
-  await expect(qr).toBeVisible();
-  const phone = await browser.newContext({
-    viewport: { width: 390, height: 844 },
-    isMobile: true,
-    hasTouch: true,
-  });
-  try {
-    const phonePage = await phone.newPage();
-    await phonePage.goto((await qr.textContent())!);
-    await phonePage
-      .getByRole("button", { name: "Xác nhận trả", exact: true })
-      .click();
-    await expect(phonePage.getByRole("status")).toContainText(
-      "Đã thanh toán thành công",
-    );
-    await fits(phonePage);
-    await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
-    await expect(
-      page.getByRole("heading", { name: "Đặt hàng thành công!" }),
-    ).toBeVisible();
-    expect(
-      await page.evaluate(
-        () =>
-          JSON.parse(localStorage.getItem("brewlite-cart")!).state.items.length,
-      ),
-    ).toBe(0);
-    await page.getByRole("link", { name: /Lịch sử đơn hàng/ }).click();
-    await expect(
-      page.getByRole("article").filter({ hasText: id }),
-    ).toContainText("Đã thanh toán");
-    await fits(page);
-  } finally {
-    await phone.close();
-  }
+  await expect(
+    page.getByRole("img", { name: `Mã QR đơn hàng ${id}` }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
+    .click();
+  await expect(
+    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
+  ).toBeVisible();
+  const pending = await (
+    await request.get(`${api}/orders/${id}`, {
+      headers: { Authorization: `Bearer ${auth.access_token}` },
+    })
+  ).json();
+  expect(pending.status).toBe("PENDING");
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("brewlite-cart")!).state.items.length,
+    ),
+  ).toBe(1);
+  await reviewAsStaff(browser, request, id);
+  await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
+  await expect(
+    page.getByRole("heading", { name: "Đặt hàng thành công!" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("brewlite-cart")!).state.items.length,
+    ),
+  ).toBe(0);
+  await page.getByRole("link", { name: /Lịch sử đơn hàng/ }).click();
+  await expect(page.getByRole("article").filter({ hasText: id })).toContainText(
+    "Đã thanh toán",
+  );
+  await fits(page);
 });
 
 test("live card failure preserves cart and retries the same order with the same deadline", async ({
   page,
   context,
   request,
+  browser,
 }) => {
   const auth = await account(request);
   await authenticate(context, auth);
@@ -394,9 +398,9 @@ test("live card failure preserves cart and retries the same order with the same 
   await page.getByRole("radio", { name: /Thẻ/ }).check();
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
   await expect(
-    page.getByRole("heading", { name: "Thanh toán bằng Thẻ" }),
+    page.getByRole("heading", { name: "Thanh toán thẻ tại quầy" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Giả lập lỗi", exact: true }).click();
+  await reviewAsStaff(browser, request, id, "reject");
   await expect(
     page.getByRole("heading", { name: "Thanh toán thất bại", exact: true }),
   ).toBeVisible();
@@ -410,10 +414,8 @@ test("live card failure preserves cart and retries the same order with the same 
   await expect(page).toHaveURL(new RegExp(`/checkout/${id}$`));
   await page.getByRole("radio", { name: /Thẻ/ }).check();
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
-  await page
-    .getByLabel("Số thẻ giả", { exact: true })
-    .fill("4242 4242 4242 4242");
-  await page.getByRole("button", { name: "Xác nhận trả", exact: true }).click();
+  await expect(page).toHaveURL(/\/pay\/PAY-/);
+  await reviewAsStaff(browser, request, id);
   await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
   const current = await (
     await request.get(`${api}/orders/${id}`, { headers })
@@ -463,6 +465,7 @@ test("paying an earlier order preserves a newer different cart", async ({
   page,
   context,
   request,
+  browser,
 }) => {
   await authenticate(context, await account(request));
   const id = await createFromCart(page);
@@ -476,10 +479,56 @@ test("paying an earlier order preserves a newer different cart", async ({
   );
   await page.goto(paymentUrl);
   await page
-    .getByRole("button", { name: "Tôi đã thanh toán", exact: true })
+    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
     .click();
+  await reviewAsStaff(browser, request, id);
   await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
   expect(await page.evaluate(() => localStorage.getItem("brewlite-cart"))).toBe(
     before,
   );
+});
+
+test("reported payment resumes safely with a skewed browser clock; customer has no admin access and logout hides payment", async ({
+  page,
+  context,
+  request,
+}) => {
+  await authenticate(context, await account(request));
+  const id = await createFromCart(page);
+  await page.getByRole("button", { name: /^Thanh toán/ }).click();
+  await expect(page).toHaveURL(/\/pay\/PAY-/);
+  const paymentUrl = page.url();
+  await page.clock.setFixedTime(new Date(Date.now() + 2 * 24 * 60 * 60 * 1000));
+  await page.reload();
+  await expect(page.getByRole("status")).toContainText(
+    /Thời gian còn lại: 1[34]:/,
+  );
+  await page
+    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
+    .click();
+  await expect(
+    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
+  ).toBeVisible();
+  await page.goto(`/checkout/${id}`);
+  await page.getByRole("button", { name: /^Thanh toán/ }).click();
+  await expect(page).toHaveURL(paymentUrl);
+  await expect(
+    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
+  ).toBeVisible();
+  await page.goto("/admin/payments");
+  await expect(
+    page.getByRole("heading", { name: "Không có quyền truy cập" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Xác nhận đã nhận tiền" }),
+  ).toHaveCount(0);
+  await page.goto(paymentUrl);
+  await expect(
+    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Đăng xuất", exact: true }).click();
+  await expect(
+    page.getByRole("link", { name: "Đăng nhập lại", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("main")).not.toContainText(id);
 });

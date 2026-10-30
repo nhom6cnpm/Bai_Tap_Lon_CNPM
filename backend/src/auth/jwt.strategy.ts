@@ -2,6 +2,19 @@ import { ExtractJwt, Strategy } from 'passport-jwt';
 import { PassportStrategy } from '@nestjs/passport';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type { UserRole } from './roles';
+
+export interface JwtPayload {
+  sub: string;
+  email: string;
+  role?: UserRole;
+}
+
+export interface AuthenticatedUser {
+  userId: string;
+  email: string;
+  role: UserRole;
+}
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
@@ -19,7 +32,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  async validate(payload: { sub: string; email: string }) {
-    return { userId: payload.sub, email: payload.email };
+  validate(payload: JwtPayload): AuthenticatedUser {
+    // Tokens issued before roles existed have no role: treat them as CUSTOMER
+    return {
+      userId: payload.sub,
+      email: payload.email,
+      role: payload.role ?? 'CUSTOMER',
+    };
   }
 }

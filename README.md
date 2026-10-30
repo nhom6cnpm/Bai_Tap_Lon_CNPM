@@ -8,20 +8,25 @@ Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integra
 [kết quả kiểm thử](docs/task-9-validation.md).
 
 Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`.
-Task 9 ở nhánh `feature/task-9-integration`; bước Task 10d ở nhánh
-`feature/task-10-payment-idempotency`. [Ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
+Bản làm việc hiện tại ở nhánh `feature/task-9-staff-payment-integration`, đã ghép
+Task 9/10c/d và voucher với thanh toán nhân viên mới. Các nhánh cũ vẫn được giữ;
+[ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
 
 **Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
 — checklist, phạm vi đã chốt và bước tiếp theo.
 
-Task 10c: [giữ nguyên liệu 5 phút, hủy/hết hạn và kiểm thử PostgreSQL](docs/task-10c-inventory.md).
+Task 10c: [giữ nguyên liệu, hủy/hết hạn và kiểm thử PostgreSQL](docs/task-10c-inventory.md).
 
-Task 10d: [khóa yêu cầu thanh toán, gửi lại và callback lặp](docs/task-10d-payments.md).
+Task 10d: [khóa yêu cầu thanh toán và gửi lại an toàn](docs/task-10d-payments.md).
 
 Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá trên đơn](docs/task-10e-vouchers.md).
 Đã có giao diện và nền xử lý trên nhánh `feature/task-10-vouchers`; có cấu hình
 [ba voucher mẫu](backend/voucher-samples.json) để nạp bằng `npm run vouchers:seed`
 trong backend. Cách chỉnh/xem chi tiết ở tài liệu Task 10e. Tích điểm chưa triển khai.
+
+**Bản tích hợp mới nhất (30/10/2026):** nhánh `feature/task-9-staff-payment-integration`
+đã ghép main `61f4474` (PR #30). [Luồng nhân viên xác nhận, thời hạn 15 phút và cách chạy thử](docs/staff-payment-integration.md).
+Các tài liệu Task 10c/d cũ ghi lại luồng 5 phút/callback trước thay đổi này.
 
 ## Công nghệ
 
@@ -81,9 +86,26 @@ Kiểm tra:
 NEXT_PUBLIC_APP_URL=http://<IP-máy-tính>:3000
 ```
 
-Trên Windows, chạy `ipconfig` để xem IPv4 của Wi-Fi. Trên macOS, chạy `ipconfig getifaddr en0` (thay `en0` bằng tên giao diện Wi-Fi nếu máy dùng tên khác). Sau khi đặt biến này hoặc khi địa chỉ IP thay đổi, chạy `docker compose up -d --build frontend` để build lại frontend, rồi tải lại trang thanh toán. QR sẽ mở trang xác nhận BrewLite Pay giả lập trên điện thoại; đây không phải giao dịch ngân hàng thật. File `.env` được Git bỏ qua.
+Trên Windows, chạy `ipconfig` để xem IPv4 Wi-Fi. Sau khi thay đổi địa chỉ,
+chạy `docker compose up -d --build frontend`. Nếu mở cả ứng dụng trên điện thoại,
+cần cấu hình thêm `NEXT_PUBLIC_API_URL=http://<IP-máy-tính>:3001` và
+`FRONTEND_URL=http://<IP-máy-tính>:3000`. File `.env` được Git bỏ qua.
 
-Task 10c giữ nguyên liệu trong **5 phút từ khi tạo đơn** rồi tự hủy và hoàn kho nếu chưa thanh toán. Checkout và QR hiển thị `expiresAt` theo đồng hồ backend; thử lại không gia hạn. Biến timeout frontend của Task 8 chỉ giới hạn thời gian tự kiểm tra, không thay đổi hạn đơn trên backend.
+QR hiện chứa liên kết `/admin/payments?orderId=...` để **nhân viên** tra cứu đơn;
+phải đăng nhập ADMIN để duyệt. Khách bấm **Tôi đã chuyển tiền** chỉ báo cho nhân viên,
+đơn vẫn PENDING. Nhân viên xác nhận mới chuyển PAID; từ chối chuyển PAYMENT_FAILED.
+Đây là luồng mô phỏng xác nhận tại cửa hàng, chưa tích hợp ngân hàng/VNPay.
+
+Task 10c giữ nguyên liệu khi tạo đơn PENDING, mặc định **15 phút từ lúc tạo đơn**
+theo cập nhật Task 8 ngày 30/10. Thời hạn được lưu trong `orders.expiresAt`;
+checkout/QR dùng đồng hồ backend, thử lại không gia hạn và PAID không trừ thêm.
+`ORDER_PAYMENT_TIMEOUT_MINUTES` trong `.env` gốc (Docker) hoặc `backend/.env`
+(chạy local) chỉ áp dụng cho đơn mới. Đơn cũ giữ nguyên hạn.
+
+Trang nhân viên: http://localhost:3000/admin/payments. Docker có tài khoản phát triển
+mặc định `admin@brewlite.vn` / `admin123`; có thể đổi qua `ADMIN_EMAIL` và
+`ADMIN_PASSWORD`. Với tài khoản đã tồn tại, seed giữ mật khẩu cũ. Chạy local cần
+điền hai biến này trong `backend/.env`. Không còn yêu cầu `PAYMENT_GATEWAY_SECRET`.
 
 Dừng và dọn dẹp container:
 ```bash
@@ -108,7 +130,7 @@ docker run -d --name brewlite-postgres -p 5432:5432 -e POSTGRES_USER=brewlite -e
 ```bash
 cd backend
 cp .env.example .env
-# Điền cả JWT_SECRET và PAYMENT_GATEWAY_SECRET vào .env
+# Điền JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD vào .env
 npm install
 npm run start:dev
 ```

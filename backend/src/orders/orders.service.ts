@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
+import { ConfigService } from '@nestjs/config';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
 import { VouchersService } from '../vouchers/vouchers.service';
@@ -17,10 +18,8 @@ import type {
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { OrderInventoryReservation } from './order-inventory-reservation.entity';
-import {
-  ORDER_PAYMENT_WINDOW_MS,
-  type CancellationReason,
-} from './order-expiry';
+import type { CancellationReason } from './order-expiry';
+import { parsePaymentTimeoutMinutes } from './payment-timeout';
 import { priceOrderItems } from './price-order-items';
 import { assertTransition, type OrderStatus } from './order-status';
 
@@ -32,6 +31,7 @@ export class OrdersService {
     private readonly dataSource: DataSource,
     private readonly inventoryService: InventoryService,
     private readonly vouchersService: VouchersService,
+    private readonly configService: ConfigService,
   ) {}
 
   async databaseNow(manager: EntityManager): Promise<Date> {
@@ -65,7 +65,13 @@ export class OrdersService {
         total: subtotal,
         items,
         createdAt: now,
-        expiresAt: new Date(now.getTime() + ORDER_PAYMENT_WINDOW_MS),
+        expiresAt: new Date(
+          now.getTime() +
+            parsePaymentTimeoutMinutes(
+              this.configService.get<string>('ORDER_PAYMENT_TIMEOUT_MINUTES'),
+            ) *
+              60_000,
+        ),
       });
       await manager.save(Order, order);
       await this.ensureInventoryReservation(order, manager);

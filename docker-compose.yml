@@ -31,8 +31,9 @@ services:
       DATABASE_URL: postgresql://brewlite:brewlite@postgres:5432/brewlite
       JWT_SECRET: ${JWT_SECRET:-brewlite_jwt_secret_dev}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1d}
-      PAYMENT_GATEWAY_SECRET: ${PAYMENT_GATEWAY_SECRET:-brewlite_mock_secret_key_sprint3}
-      ORDER_PAYMENT_TIMEOUT_MINUTES: ${ORDER_PAYMENT_TIMEOUT_MINUTES:-5}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@brewlite.vn}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
+      ORDER_PAYMENT_TIMEOUT_MINUTES: ${ORDER_PAYMENT_TIMEOUT_MINUTES:-15}
       NODE_ENV: production
     ports:
       - "3001:3001"
@@ -44,7 +45,7 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
         NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-        NEXT_PUBLIC_ORDER_PAYMENT_TIMEOUT_MINUTES: ${ORDER_PAYMENT_TIMEOUT_MINUTES:-5}
+        NEXT_PUBLIC_ORDER_PAYMENT_TIMEOUT_MINUTES: ${ORDER_PAYMENT_TIMEOUT_MINUTES:-15}
     container_name: brewlite-frontend
     restart: unless-stopped
     depends_on:
@@ -53,8 +54,7 @@ services:
       PORT: 3000
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      NEXT_PUBLIC_ORDER_PAYMENT_TIMEOUT_MINUTES: ${ORDER_PAYMENT_TIMEOUT_MINUTES:-5}
-      API_INTERNAL_URL: http://backend:3001
+      NEXT_PUBLIC_ORDER_PAYMENT_TIMEOUT_MINUTES: ${ORDER_PAYMENT_TIMEOUT_MINUTES:-15}
     ports:
       - "3000:3000"
 

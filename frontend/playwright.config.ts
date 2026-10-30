@@ -48,7 +48,9 @@ export default defineConfig({
         FRONTEND_URL: "http://127.0.0.1:3200",
         NODE_ENV: "production",
         JWT_SECRET: "task9-ui-test-jwt",
-        PAYMENT_GATEWAY_SECRET: "task9-ui-test-gateway",
+        ADMIN_EMAIL: "staff@task9-ui.test",
+        ADMIN_PASSWORD: "StaffUiTest123",
+        ORDER_PAYMENT_TIMEOUT_MINUTES: "15",
       },
     },
     {
@@ -60,7 +62,6 @@ export default defineConfig({
       timeout: 120000,
       env: {
         NEXT_PUBLIC_API_URL: "http://127.0.0.1:3201",
-        API_INTERNAL_URL: "http://127.0.0.1:3201",
         NEXT_PUBLIC_APP_URL: "http://127.0.0.1:3200",
         NEXT_TELEMETRY_DISABLED: "1",
       },

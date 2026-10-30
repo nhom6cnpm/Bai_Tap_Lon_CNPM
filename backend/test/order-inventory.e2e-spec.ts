@@ -20,6 +20,10 @@ import { OrderInventoryReservation } from '../src/orders/order-inventory-reserva
 import { OrderItem } from '../src/orders/order-item.entity';
 import { Order } from '../src/orders/order.entity';
 import { OrdersService } from '../src/orders/orders.service';
+import { PaymentRequestKey } from '../src/payments/entities/payment-request-key.entity';
+import { AdminPaymentConfirmation1761850000000 } from '../src/migrations/1761850000000-AdminPaymentConfirmation';
+import { OrderPaymentTimeoutDefault1761860000000 } from '../src/migrations/1761860000000-OrderPaymentTimeoutDefault';
+import { PaymentRequestKeys1761870000000 } from '../src/migrations/1761870000000-PaymentRequestKeys';
 import { Payment } from '../src/payments/entities/payment.entity';
 import { PaymentsService } from '../src/payments/payments.service';
 import { Product } from '../src/products/product.entity';
@@ -38,6 +42,8 @@ describeDatabase(
     let payments: PaymentsService;
     let userId: string;
     let token: string;
+    let adminId: string;
+    let adminToken: string;
     const item = (
       overrides: Partial<{
         productId: string;
@@ -62,15 +68,26 @@ describeDatabase(
         `UPDATE orders SET "expiresAt" = clock_timestamp() - INTERVAL '1 second' WHERE id = $1`,
         [id],
       );
-    const callback = (
+    const staffReview = (
       paymentId: string,
       result: 'SUCCESS' | 'FAILED' = 'SUCCESS',
     ) =>
-      payments.processCallback({
+      payments.review(
+        adminId,
         paymentId,
-        result,
-        signature: payments.generateSignature(paymentId, result),
-      });
+        result === 'SUCCESS' ? 'CONFIRM' : 'REJECT',
+      );
+
+    const undoThrough = async (name: string) => {
+      for (;;) {
+        const [last] = await database.query(
+          'SELECT name FROM migrations ORDER BY id DESC LIMIT 1',
+        );
+        if (!last) throw new Error(`Migration not found: ${name}`);
+        await database.undoLastMigration();
+        if (last.name === name) break;
+      }
+    };
 
     beforeAll(async () => {
       const url = new URL(databaseUrl!);
@@ -91,6 +108,7 @@ describeDatabase(
           RecipeItem,
           ToppingRecipe,
           Payment,
+          PaymentRequestKey,
           OrderInventoryReservation,
           Voucher,
         ],
@@ -101,6 +119,9 @@ describeDatabase(
           OrderInventoryReservations1761830000000,
           OrderItemDisplaySnapshot1761840000000,
           AddVouchers1761850000000,
+          AdminPaymentConfirmation1761850000000,
+          OrderPaymentTimeoutDefault1761860000000,
+          PaymentRequestKeys1761870000000,
         ],
         synchronize: false,
         logging: false,
@@ -116,7 +137,7 @@ describeDatabase(
         .useValue(
           new ConfigService({
             JWT_SECRET: 'task10-database-test-jwt',
-            PAYMENT_GATEWAY_SECRET: 'task10-database-test-gateway',
+            ORDER_PAYMENT_TIMEOUT_MINUTES: '15',
             FRONTEND_URL: 'http://localhost:3000',
           }),
         )
@@ -147,7 +168,19 @@ describeDatabase(
         loyaltyPoints: 0,
       });
       userId = user.id;
-      token = app.get(JwtService).sign({ sub: user.id, email: user.email });
+      token = app
+        .get(JwtService)
+        .sign({ sub: user.id, email: user.email, role: 'CUSTOMER' });
+      const admin = await database.getRepository(User).save({
+        email: `${randomUUID()}@staff.test`,
+        passwordHash: 'not-used-for-login',
+        loyaltyPoints: 0,
+        role: 'ADMIN',
+      });
+      adminId = admin.id;
+      adminToken = app
+        .get(JwtService)
+        .sign({ sub: admin.id, email: admin.email, role: 'ADMIN' });
     });
 
     afterAll(async () => {
@@ -155,7 +188,7 @@ describeDatabase(
       if (database?.isInitialized) await database.destroy();
     });
 
-    it('deducts size/topping quantities, stores their snapshot and returns a five-minute deadline', async () => {
+    it('deducts size/topping quantities, stores their snapshot and returns a fifteen-minute deadline', async () => {
       const created = await create([
         item({ size: 'L', toppingIds: ['cream'], qty: 2 }),
       ]);
@@ -164,7 +197,7 @@ describeDatabase(
       expect((await stock('cream')).quantity).toBe(960);
       expect((await stock()).version).toBe(2);
       expect(created.expiresAt.getTime() - created.createdAt.getTime()).toBe(
-        300000,
+        900000,
       );
       expect(
         await database
@@ -257,7 +290,7 @@ describeDatabase(
         { orderId: created.orderId, method: 'WALLET' },
         randomUUID(),
       );
-      await callback(first.paymentId, 'FAILED');
+      await staffReview(first.paymentId, 'FAILED');
       expect((await getOrder(created.orderId)).status).toBe('PAYMENT_FAILED');
       expect((await stock()).quantity).toBe(980);
       const second = await payments.createPayment(
@@ -269,7 +302,7 @@ describeDatabase(
       expect((await getOrder(created.orderId)).expiresAt.getTime()).toBe(
         created.expiresAt.getTime(),
       );
-      await callback(second.paymentId);
+      await staffReview(second.paymentId);
       expect((await getOrder(created.orderId)).status).toBe('PAID');
       expect((await stock()).quantity).toBe(980);
       expect((await stock()).version).toBe(2);
@@ -314,7 +347,7 @@ describeDatabase(
       expect(await database.getRepository(Payment).count()).toBe(0);
     });
 
-    it('rejects a late SUCCESS callback while committing the refund', async () => {
+    it('rejects a late SUCCESS staff decision while committing the refund', async () => {
       const created = await create();
       const payment = await payments.createPayment(
         userId,
@@ -322,7 +355,7 @@ describeDatabase(
         randomUUID(),
       );
       await expire(created.orderId);
-      await expect(callback(payment.paymentId)).rejects.toThrow(
+      await expect(staffReview(payment.paymentId)).rejects.toThrow(
         'Đơn đã hết hạn',
       );
       expect((await getOrder(created.orderId)).status).toBe('CANCELLED');
@@ -336,7 +369,7 @@ describeDatabase(
       ).toBe('PENDING');
     });
 
-    it('serializes a callback racing with expiry so a cancelled order cannot become PAID', async () => {
+    it('serializes a staff decision racing with expiry so a cancelled order cannot become PAID', async () => {
       const created = await create();
       const payment = await payments.createPayment(
         userId,
@@ -345,7 +378,7 @@ describeDatabase(
       );
       await expire(created.orderId);
       await Promise.allSettled([
-        callback(payment.paymentId),
+        staffReview(payment.paymentId),
         orders.expireUnpaidOrders(),
         orders.expireUnpaidOrders(),
       ]);
@@ -361,14 +394,14 @@ describeDatabase(
         { orderId: created.orderId, method: 'CARD' },
         randomUUID(),
       );
-      await callback(payment.paymentId);
+      await staffReview(payment.paymentId);
       await expire(created.orderId);
       expect(await orders.expireUnpaidOrders()).toBe(0);
       expect((await getOrder(created.orderId)).status).toBe('PAID');
       expect((await stock()).quantity).toBe(980);
     });
 
-    it('checks the deadline after obtaining the lock, even if the callback arrived before expiry', async () => {
+    it('checks the deadline after obtaining the lock, even if the staff decision arrived before expiry', async () => {
       const created = await create();
       const payment = await payments.createPayment(
         userId,
@@ -383,7 +416,7 @@ describeDatabase(
           `UPDATE orders SET "expiresAt" = clock_timestamp() + INTERVAL '200 milliseconds' WHERE id = $1`,
           [created.orderId],
         );
-        const result = callback(payment.paymentId).then(
+        const result = staffReview(payment.paymentId).then(
           () => 'paid',
           () => 'rejected',
         );
@@ -398,7 +431,7 @@ describeDatabase(
       }
     });
 
-    it('does not run duplicate successful callbacks or deduct stock a second time', async () => {
+    it('does not run duplicate successful staff decisions or deduct stock a second time', async () => {
       const created = await create();
       const payment = await payments.createPayment(
         userId,
@@ -406,11 +439,9 @@ describeDatabase(
         randomUUID(),
       );
       const results = await Promise.all(
-        Array.from({ length: 8 }, () => callback(payment.paymentId)),
+        Array.from({ length: 8 }, () => staffReview(payment.paymentId)),
       );
-      expect(
-        results.filter((r) => r.message === 'Xử lý callback thành công'),
-      ).toHaveLength(1);
+      expect(results.every((result) => result.status === 'SUCCESS')).toBe(true);
       expect((await stock()).quantity).toBe(980);
       expect((await stock()).version).toBe(2);
       expect((await getOrder(created.orderId)).status).toBe('PAID');
@@ -460,9 +491,7 @@ describeDatabase(
     }, 10000);
 
     it('preserves legacy rows through down/up migration and never refunds stock that was not deducted', async () => {
-      await database.undoLastMigration();
-      await database.undoLastMigration();
-      await database.undoLastMigration();
+      await undoThrough('OrderInventoryReservations1761830000000');
       await database.query(
         `INSERT INTO orders (id, "userId", status, total, "createdAt")
       VALUES ('LEGACY-EXPIRED', $1, 'PENDING', 35000, CURRENT_TIMESTAMP - INTERVAL '10 minutes')`,
@@ -474,7 +503,7 @@ describeDatabase(
       expect((await getOrder('LEGACY-EXPIRED')).status).toBe('CANCELLED');
       expect((await stock()).quantity).toBe(1000);
       expect((await stock()).version).toBe(1);
-      expect(await database.getRepository(User).count()).toBe(1);
+      expect(await database.getRepository(User).count()).toBe(2);
     });
 
     it('reserves a still-valid legacy order on payment without extending its original deadline', async () => {
@@ -495,7 +524,7 @@ describeDatabase(
       expect((await getOrder(original.id)).expiresAt.getTime()).toBe(
         original.expiresAt.getTime(),
       );
-      await callback(payment.paymentId);
+      await staffReview(payment.paymentId);
       expect((await stock()).quantity).toBe(980);
     });
 
@@ -600,7 +629,7 @@ describeDatabase(
         expect(
           Date.parse(response.body.expiresAt) -
             Date.parse(response.body.createdAt),
-        ).toBe(300000);
+        ).toBe(900000);
         expect(Number.isFinite(Date.parse(response.body.serverTime))).toBe(
           true,
         );
@@ -729,7 +758,7 @@ describeDatabase(
           { orderId: paid.orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await callback(payment.paymentId);
+        await staffReview(payment.paymentId);
         const response = await detail(paid.orderId).expect(200);
         expect(response.body).toMatchObject({
           status: 'PAID',
@@ -745,8 +774,7 @@ describeDatabase(
       });
 
       it('backfills legacy item display fields without recalculating historical money', async () => {
-        await database.undoLastMigration();
-        await database.undoLastMigration();
+        await undoThrough('OrderItemDisplaySnapshot1761840000000');
         await database.query(
           `INSERT INTO orders (id, "userId", status, total) VALUES ('LEGACY-HISTORY', $1, 'COMPLETED', 12345)`,
           [userId],
@@ -982,11 +1010,11 @@ describeDatabase(
           randomUUID(),
         );
         expect(
-          (await payments.getPaymentForGateway(session.paymentId)).amount,
+          (await payments.getPaymentById(session.paymentId, userId)).amount,
         ).toBe(25000);
         await Promise.all([
-          callback(session.paymentId),
-          callback(session.paymentId),
+          staffReview(session.paymentId),
+          staffReview(session.paymentId),
         ]);
         const history = await request(app.getHttpServer())
           .get(`/orders/${created.body.orderId}`)
@@ -1011,7 +1039,7 @@ describeDatabase(
           { orderId: created.body.orderId, method: 'CARD' },
           randomUUID(),
         );
-        await callback(first.paymentId, 'FAILED');
+        await staffReview(first.paymentId, 'FAILED');
         await database
           .getRepository(Voucher)
           .update('TEST10K', { isActive: false });
@@ -1021,12 +1049,12 @@ describeDatabase(
           randomUUID(),
         );
         expect(
-          (await payments.getPaymentForGateway(retry.paymentId)).amount,
+          (await payments.getPaymentById(retry.paymentId, userId)).amount,
         ).toBe(25000);
         expect(
           (await getOrder(created.body.orderId)).expiresAt.toISOString(),
         ).toBe(created.body.expiresAt);
-        await callback(retry.paymentId);
+        await staffReview(retry.paymentId);
         expect((await stock()).quantity).toBe(980);
       });
 
@@ -1047,7 +1075,7 @@ describeDatabase(
 
       it('backfills existing order totals through the voucher migration without activating any codes', async () => {
         const created = await create();
-        await database.undoLastMigration();
+        await undoThrough('AddVouchers1761850000000');
         await database.runMigrations();
         expect(await getOrder(created.orderId)).toMatchObject({
           subtotal: 35000,
@@ -1066,17 +1094,13 @@ describeDatabase(
           .set('Authorization', `Bearer ${token}`)
           .set('Idempotency-Key', key)
           .send({ orderId, method });
-      const signedCallback = (
-        paymentId: string,
-        result: 'SUCCESS' | 'FAILED',
-      ) =>
+      const staffDecision = (paymentId: string, result: 'SUCCESS' | 'FAILED') =>
         request(app.getHttpServer())
-          .post('/payments/callback')
-          .send({
-            paymentId,
-            result,
-            signature: payments.generateSignature(paymentId, result),
-          });
+          .post(
+            `/admin/payments/${paymentId}/${result === 'SUCCESS' ? 'confirm' : 'reject'}`,
+          )
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({});
 
       it('creates exactly one payment for twelve simultaneous HTTP requests with the same key', async () => {
         const created = await create();
@@ -1110,7 +1134,7 @@ describeDatabase(
           const created = await create();
           const key = randomUUID();
           const first = await checkout(created.orderId, key).expect(201);
-          await signedCallback(first.body.paymentId, 'SUCCESS').expect(201);
+          await staffDecision(first.body.paymentId, 'SUCCESS').expect(200);
           if (status === 'CANCELLED')
             await orders.cancelOrder(userId, created.orderId);
           else {
@@ -1124,7 +1148,6 @@ describeDatabase(
           const replay = await checkout(created.orderId, key).expect(201);
           expect(replay.body).toMatchObject({
             paymentId: first.body.paymentId,
-            gatewayUrl: first.body.gatewayUrl,
             status: 'SUCCESS',
           });
           expect(await database.getRepository(Payment).count()).toBe(1);
@@ -1144,7 +1167,7 @@ describeDatabase(
         const created = await create();
         const key = randomUUID();
         const first = await checkout(created.orderId, key).expect(201);
-        await signedCallback(first.body.paymentId, 'FAILED').expect(201);
+        await staffDecision(first.body.paymentId, 'FAILED').expect(200);
         const replay = await checkout(created.orderId, key).expect(201);
         expect(replay.body).toMatchObject({
           paymentId: first.body.paymentId,
@@ -1165,7 +1188,7 @@ describeDatabase(
         expect(await database.getRepository(Payment).count()).toBe(2);
       });
 
-      it('replays an expired attempt without creating another payment or restoring the five-minute window', async () => {
+      it('replays an expired attempt without creating another payment or restoring the fifteen-minute window', async () => {
         const created = await create();
         const key = randomUUID();
         const first = await checkout(created.orderId, key).expect(201);
@@ -1185,7 +1208,7 @@ describeDatabase(
         expect(await database.getRepository(Payment).count()).toBe(1);
         expect((await stock()).quantity).toBe(1000);
         expect((await stock()).version).toBe(3);
-        await signedCallback(first.body.paymentId, 'SUCCESS').expect(400);
+        await staffDecision(first.body.paymentId, 'SUCCESS').expect(400);
       });
 
       it('rejects reusing a key with a different payment method instead of returning an unrelated session', async () => {
@@ -1253,28 +1276,30 @@ describeDatabase(
         await checkout(created.orderId, 'x'.repeat(128)).expect(201);
       });
 
-      it('serializes mixed success/failure callbacks and acknowledges only the first outcome', async () => {
+      it('serializes mixed success/failure staff decisions and acknowledges only the first outcome', async () => {
         const created = await create();
         const first = await checkout(created.orderId, randomUUID()).expect(201);
         const responses = await Promise.all(
           Array.from({ length: 10 }, (_, index) =>
-            signedCallback(
+            staffDecision(
               first.body.paymentId,
               index % 2 ? 'FAILED' : 'SUCCESS',
             ),
           ),
         );
-        expect(responses.every((response) => response.status === 201)).toBe(
+        expect(responses.every((response) => response.status === 200)).toBe(
           true,
         );
         expect(
           new Set(responses.map((response) => response.body.status)).size,
         ).toBe(1);
         expect(
-          responses.filter(
-            (response) => response.body.message === 'Xử lý callback thành công',
-          ),
-        ).toHaveLength(1);
+          (
+            await database
+              .getRepository(Payment)
+              .findOneByOrFail({ id: first.body.paymentId })
+          ).reviewedBy,
+        ).toBe(adminId);
         const payment = await database
           .getRepository(Payment)
           .findOneByOrFail({ id: first.body.paymentId });
@@ -1292,7 +1317,7 @@ describeDatabase(
           `ALTER TABLE payments ADD CONSTRAINT task10d_reject_success CHECK (status <> 'SUCCESS')`,
         );
         try {
-          await signedCallback(first.body.paymentId, 'SUCCESS').expect(500);
+          await staffDecision(first.body.paymentId, 'SUCCESS').expect(500);
           expect((await getOrder(created.orderId)).status).toBe('PENDING');
           expect(
             (
@@ -1307,34 +1332,33 @@ describeDatabase(
             'ALTER TABLE payments DROP CONSTRAINT task10d_reject_success',
           );
         }
-        await signedCallback(first.body.paymentId, 'SUCCESS').expect(201);
+        await staffDecision(first.body.paymentId, 'SUCCESS').expect(200);
         expect((await getOrder(created.orderId)).status).toBe('PAID');
       });
 
-      it('does not let a callback from an older failed attempt undo a successful retry', async () => {
+      it('does not let a staff decision from an older failed attempt undo a successful retry', async () => {
         const created = await create();
         const first = await checkout(created.orderId, randomUUID()).expect(201);
-        await signedCallback(first.body.paymentId, 'FAILED').expect(201);
+        await staffDecision(first.body.paymentId, 'FAILED').expect(200);
         const second = await checkout(
           created.orderId,
           randomUUID(),
           'CARD',
         ).expect(201);
-        await signedCallback(second.body.paymentId, 'SUCCESS').expect(201);
-        const late = await signedCallback(
-          first.body.paymentId,
-          'FAILED',
-        ).expect(201);
+        await staffDecision(second.body.paymentId, 'SUCCESS').expect(200);
+        const late = await staffDecision(first.body.paymentId, 'FAILED').expect(
+          200,
+        );
         expect(late.body.status).toBe('FAILED');
         expect((await getOrder(created.orderId)).status).toBe('PAID');
         expect((await stock()).version).toBe(2);
       });
 
-      it('serializes successful callbacks racing with cancellation and refunds at most once', async () => {
+      it('serializes successful staff decisions racing with cancellation and refunds at most once', async () => {
         const created = await create();
         const first = await checkout(created.orderId, randomUUID()).expect(201);
         await Promise.allSettled([
-          callback(first.body.paymentId),
+          staffReview(first.body.paymentId),
           orders.cancelOrder(userId, created.orderId),
           orders.cancelOrder(userId, created.orderId),
         ]);
@@ -1367,6 +1391,154 @@ describeDatabase(
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
       expect((await stock()).quantity).toBe(1000);
+    });
+    describe('staff confirmation integration', () => {
+      it('filters expired sessions before the 100-row limit so new live payments stay visible', async () => {
+        await database.query(
+          `INSERT INTO orders (id, "userId", status, total, subtotal, "expiresAt") SELECT 'STALE-' || n, $1, 'PENDING', 35000, 35000, now() - interval '1 hour' FROM generate_series(1,100) n`,
+          [userId],
+        );
+        await database.query(
+          `INSERT INTO payments (id, "orderId", "userId", "idempotencyKey", amount, method, status, "createdAt") SELECT 'STALE-PAY-' || n, 'STALE-' || n, $1, 'STALE-KEY-' || n, 35000, 'CARD', 'PENDING', now() - interval '1 day' FROM generate_series(1,100) n`,
+          [userId],
+        );
+        const order = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: order.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        const active = await payments.listForAdmin({ status: 'ACTIVE' });
+        expect(active.map((row) => row.paymentId)).toEqual([payment.paymentId]);
+      });
+      const report = (id: string, jwt = token) =>
+        request(app.getHttpServer())
+          .post(`/payments/${id}/report-paid`)
+          .set('Authorization', `Bearer ${jwt}`);
+      const review = (id: string, decision = 'confirm', jwt = adminToken) =>
+        request(app.getHttpServer())
+          .post(`/admin/payments/${id}/${decision}`)
+          .set('Authorization', `Bearer ${jwt}`)
+          .send({ note: 'Đã đối chiếu tại quầy' });
+
+      it('only staff may confirm; reporting is replay-safe and does not pay or change inventory', async () => {
+        const order = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: order.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        const first = await report(payment.paymentId).expect(200);
+        expect(first.body).toMatchObject({
+          status: 'CUSTOMER_REPORTED',
+          orderStatus: 'PENDING',
+        });
+        const repeated = await report(payment.paymentId).expect(200);
+        expect(repeated.body.reportedAt).toBe(first.body.reportedAt);
+        await review(payment.paymentId, 'confirm', token).expect(403);
+        await request(app.getHttpServer())
+          .get('/admin/payments')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(403);
+        await request(app.getHttpServer())
+          .post('/payments/callback')
+          .send({ paymentId: payment.paymentId, result: 'SUCCESS' })
+          .expect(404);
+        await request(app.getHttpServer())
+          .get(`/mock-gateway/${payment.paymentId}`)
+          .expect(404);
+        expect((await stock()).version).toBe(2);
+        expect((await getOrder(order.orderId)).status).toBe('PENDING');
+        await review(payment.paymentId).expect(200);
+        const saved = await database
+          .getRepository(Payment)
+          .findOneByOrFail({ id: payment.paymentId });
+        expect(saved.reviewedBy).toBe(adminId);
+        expect(saved.reviewedAt).toBeInstanceOf(Date);
+        expect((await stock()).version).toBe(2);
+      });
+
+      it('keeps one active payment with many keys, with immutable key payloads even after method changes', async () => {
+        const order = await create();
+        const keys = Array.from({ length: 12 }, () => randomUUID());
+        const sessions = await Promise.all(
+          keys.map((key) =>
+            payments.createPayment(
+              userId,
+              { orderId: order.orderId, method: 'WALLET' },
+              key,
+            ),
+          ),
+        );
+        expect(new Set(sessions.map((p) => p.paymentId)).size).toBe(1);
+        expect(await database.getRepository(PaymentRequestKey).count()).toBe(
+          12,
+        );
+        const changed = await payments.createPayment(
+          userId,
+          { orderId: order.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        expect(changed.paymentId).toBe(sessions[0].paymentId);
+        const replay = await payments.createPayment(
+          userId,
+          { orderId: order.orderId, method: 'WALLET' },
+          keys[11],
+        );
+        expect(replay.method).toBe('CARD');
+        await expect(
+          payments.createPayment(
+            userId,
+            { orderId: order.orderId, method: 'CARD' },
+            keys[11],
+          ),
+        ).rejects.toThrow('Idempotency-Key');
+        const other = await create();
+        await expect(
+          payments.createPayment(
+            userId,
+            { orderId: other.orderId, method: 'WALLET' },
+            keys[11],
+          ),
+        ).rejects.toThrow('Idempotency-Key');
+        expect(await database.getRepository(Payment).count()).toBe(1);
+      });
+
+      it.each(['report', 'confirm', 'reject'])(
+        'commits timeout cancellation and ingredient refund on expired %s',
+        async (action) => {
+          const order = await create();
+          const payment = await payments.createPayment(
+            userId,
+            { orderId: order.orderId, method: 'WALLET' },
+            randomUUID(),
+          );
+          await expire(order.orderId);
+          if (action === 'report') await report(payment.paymentId).expect(400);
+          else await review(payment.paymentId, action).expect(400);
+          expect((await getOrder(order.orderId)).status).toBe('CANCELLED');
+          expect((await stock()).quantity).toBe(1000);
+          expect((await stock()).version).toBe(3);
+          await review(payment.paymentId).expect(400);
+          expect((await stock()).version).toBe(3);
+        },
+      );
+
+      it('hides expired/cancelled payments from ACTIVE and retains them under ALL', async () => {
+        const order = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: order.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        await expire(order.orderId);
+        expect(await payments.listForAdmin({ status: 'ACTIVE' })).toEqual([]);
+        expect(
+          (await payments.listForAdmin({ status: 'ALL' }))[0].paymentId,
+        ).toBe(payment.paymentId);
+        await orders.expireUnpaidOrders();
+        expect(await payments.listForAdmin({ status: 'ACTIVE' })).toEqual([]);
+      });
     });
   },
 );

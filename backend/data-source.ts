@@ -10,6 +10,7 @@ import { ToppingRecipe } from './src/inventory/topping-recipe.entity';
 import { Payment } from './src/payments/entities/payment.entity';
 import { OrderInventoryReservation } from './src/orders/order-inventory-reservation.entity';
 import { Voucher } from './src/vouchers/voucher.entity';
+import { PaymentRequestKey } from './src/payments/entities/payment-request-key.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -27,6 +28,7 @@ export const AppDataSource = new DataSource({
     Payment,
     OrderInventoryReservation,
     Voucher,
+    PaymentRequestKey,
   ],
   migrations: ['src/migrations/*{.ts,.js}'],
 });

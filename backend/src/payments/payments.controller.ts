@@ -5,24 +5,25 @@ import {
   Param,
   Body,
   Headers,
+  HttpCode,
   UseGuards,
   Req,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
-import { PaymentCallbackDto } from './dto/payment-callback.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 interface AuthenticatedRequest {
-  user: { userId: string; email: string };
+  user: AuthenticatedUser;
 }
 
 @Controller('payments')
+@UseGuards(JwtAuthGuard)
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
   createPayment(
     @Req() req: AuthenticatedRequest,
     @Body() dto: CreatePaymentDto,
@@ -36,13 +37,14 @@ export class PaymentsController {
   }
 
   @Get(':id')
-  @UseGuards(JwtAuthGuard)
   getPayment(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.paymentsService.getPaymentById(id, req.user.userId);
   }
 
-  @Post('callback')
-  callback(@Body() dto: PaymentCallbackDto) {
-    return this.paymentsService.processCallback(dto);
+  // "Tôi đã chuyển tiền": only notifies staff, the order stays PENDING
+  @Post(':id/report-paid')
+  @HttpCode(200)
+  reportPaid(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
+    return this.paymentsService.reportPaid(req.user.userId, id);
   }
 }

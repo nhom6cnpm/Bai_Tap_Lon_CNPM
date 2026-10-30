@@ -1,3 +1,4 @@
+import { reviewAsStaff } from "./staff";
 import {
   expect,
   test,
@@ -117,62 +118,52 @@ test("select a public voucher and pay the discounted amount through the QR on a 
   await page.getByRole("button", { name: "Tiếp tục đơn hàng" }).click();
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
   await expect(page).toHaveURL(/\/pay\/PAY-/);
-  const qr = page.getByText(/^http.*\/mock-gateway\//).first();
-  await expect(qr).toBeVisible();
-  const phone = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+  await expect(
+    page.getByRole("img", { name: `Mã QR đơn hàng ${id}` }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
+    .click();
+  await expect(
+    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
+  ).toBeVisible();
+  await reviewAsStaff(browser, request, id);
+  await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
+  await expect(page.getByText("Voucher UI10K", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("region", { name: "Tổng kết thanh toán" }),
+  ).toContainText(/Bạn tiết kiệm 10[.,]000/);
+  const order = await (
+    await request.get(`${api}/orders/${id}`, {
+      headers: { Authorization: `Bearer ${auth.access_token}` },
+    })
+  ).json();
+  expect(order).toMatchObject({
+    subtotal: 35000,
+    discount: 10000,
+    total: 25000,
+    voucherCode: "UI10K",
+    status: "PAID",
   });
-  try {
-    const screen = await phone.newPage();
-    await screen.goto((await qr.textContent())!);
-    await expect(screen.getByText(/25[.,]000/)).toBeVisible();
-    await screen
-      .getByRole("button", { name: "Xác nhận trả", exact: true })
-      .click();
-    await expect(screen.getByRole("status")).toContainText(
-      "Đã thanh toán thành công",
-    );
-    await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
-    await expect(
-      page.getByText("Voucher UI10K", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByRole("region", { name: "Tổng kết thanh toán" }),
-    ).toContainText(/Bạn tiết kiệm 10[.,]000/);
-    const order = await (
-      await request.get(`${api}/orders/${id}`, {
-        headers: { Authorization: `Bearer ${auth.access_token}` },
-      })
-    ).json();
-    expect(order).toMatchObject({
-      subtotal: 35000,
-      discount: 10000,
-      total: 25000,
-      voucherCode: "UI10K",
-      status: "PAID",
-    });
-    expect(
-      await page.evaluate(
-        () =>
-          JSON.parse(localStorage.getItem("brewlite-cart")!).state.voucherCode,
-      ),
-    ).toBe("");
-    await fits(page);
-    await page.goto("/orders");
-    await expect(
-      page.getByRole("article").filter({ hasText: id }),
-    ).toContainText(/Đã giảm 10[.,]000/);
-    await page
-      .getByRole("article")
-      .filter({ hasText: id })
-      .getByRole("link", { name: "Xem chi tiết" })
-      .click();
-    await expect(
-      page.getByRole("region", { name: "Tổng kết thanh toán" }),
-    ).toContainText("Voucher UI10K");
-  } finally {
-    await phone.close();
-  }
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("brewlite-cart")!).state.voucherCode,
+    ),
+  ).toBe("");
+  await fits(page);
+  await page.goto("/orders");
+  await expect(page.getByRole("article").filter({ hasText: id })).toContainText(
+    /Đã giảm 10[.,]000/,
+  );
+  await page
+    .getByRole("article")
+    .filter({ hasText: id })
+    .getByRole("link", { name: "Xem chi tiết" })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Tổng kết thanh toán" }),
+  ).toContainText("Voucher UI10K");
 });
 
 test("enter a private code, reject a wrong code and preserve selection through login", async ({

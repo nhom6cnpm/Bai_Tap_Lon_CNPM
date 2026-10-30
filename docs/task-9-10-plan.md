@@ -3,11 +3,31 @@
 Cập nhật: 30/10/2026. Đây là checklist theo dõi công việc đã thống nhất với Ân.
 Cập nhật dấu hoàn thành theo kết quả thực tế; không đánh dấu xong chỉ vì đã có demo.
 
+## Cập nhật hiện hành — nhân viên xác nhận thanh toán (30/10)
+
+Nhánh làm việc: `feature/task-9-staff-payment-integration`, trong thư mục chính
+`D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`. Nền main mới: `61f4474`, PR #30.
+Chi tiết và kết quả kiểm tra: [tích hợp thanh toán nhân viên](staff-payment-integration.md).
+
+- Khách báo chuyển tiền → Payment CUSTOMER_REPORTED; Order vẫn PENDING.
+- ADMIN xác nhận/từ chối; giữ khóa đơn, transaction, hoàn kho và idempotency Task 10d.
+- Mặc định giữ chỗ **15 phút** cho đơn mới, theo cập nhật Issue #18; đơn cũ giữ expiresAt.
+- QR mở trang quản trị để tra cứu; đã bỏ cổng mock/callback và form thẻ giả.
+- Voucher mẫu, bảng giá và lịch sử snapshot được giữ lại.
+- Đã kiểm tra: 138 unit, 83 PostgreSQL e2e; 30 ca UI hồi quy và 2 ca UI bổ sung qua.
+  Đã build/chạy Docker, đối chiếu giữ nguyên dữ liệu và kiểm tra trang nhân viên
+  desktop/mobile. Bản này đã chạy tại `localhost:3000`; chưa push nhánh/merge main.
+- Còn lại: tích điểm/chính sách dùng voucher; nhóm chốt hủy PAID/hoàn tiền và tiến
+  trình pha chế. Chưa thêm các chức năng này trong đợt tích hợp thanh toán.
+
+Các mục bên dưới là nhật ký các bước trước đây; kết quả kiểm thử cũ và mô tả
+callback/5 phút được thay thế bởi bản cập nhật trên.
+
 ## Phạm vi đã chốt
 
 - Bám đề và nhiệm vụ GitHub; bỏ qua chức năng “Đặt lại” đơn hoàn tất/đã hủy.
 - Giữ phần “Chỉ còn X ly” theo size/topping vì nhóm đã yêu cầu bổ sung.
-- Tạo đơn PENDING thì trừ nguyên liệu để giữ chỗ trong **5 phút từ lúc tạo đơn**.
+- Tạo đơn PENDING thì trừ nguyên liệu để giữ chỗ trong **15 phút từ lúc tạo đơn** (đơn mới, cập nhật 30/10).
 - PAID không trừ thêm; PAYMENT_FAILED giữ nguyên liệu trong thời gian còn lại.
 - Thử lại thanh toán dùng cùng đơn, không gia hạn giữ chỗ.
 - Hủy đúng quy tắc hoặc hết hạn thì CANCELLED và hoàn nguyên liệu đúng một lần.

@@ -10,11 +10,13 @@ import * as bcrypt from 'bcrypt';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { User } from './user.entity';
+import type { UserRole } from './roles';
 
 export interface UserProfileResponse {
   id: string;
   email: string;
   loyaltyPoints: number;
+  role: UserRole;
 }
 
 @Injectable()
@@ -50,6 +52,7 @@ export class AuthService {
       email: normalizedEmail,
       passwordHash: hashedPassword,
       loyaltyPoints: 0,
+      role: 'CUSTOMER', // never ADMIN from the public register endpoint
     });
 
     const savedUser = await this.userRepository.save(newUser);
@@ -58,6 +61,7 @@ export class AuthService {
       id: savedUser.id,
       email: savedUser.email,
       loyaltyPoints: savedUser.loyaltyPoints ?? 0,
+      role: savedUser.role ?? 'CUSTOMER',
     };
   }
 
@@ -81,13 +85,15 @@ export class AuthService {
     }
 
     // Generate JWT token
-    const payload = { email: user.email, sub: user.id };
+    const role = user.role ?? 'CUSTOMER';
+    const payload = { email: user.email, sub: user.id, role };
     return {
       access_token: this.jwtService.sign(payload),
       user: {
         id: user.id,
         email: user.email,
         loyaltyPoints: user.loyaltyPoints ?? 0,
+        role,
       },
     };
   }
@@ -101,6 +107,7 @@ export class AuthService {
       id: user.id,
       email: user.email,
       loyaltyPoints: user.loyaltyPoints ?? 0,
+      role: user.role ?? 'CUSTOMER',
     };
   }
 }

@@ -64,7 +64,10 @@ export function OrderCheckout({ id }: { id: string }) {
         if (!stored?.paymentId) continue;
         try {
           const previous = await getPayment(stored.paymentId);
-          if (previous.status === "PENDING") {
+          if (
+            previous.status === "PENDING" ||
+            previous.status === "CUSTOMER_REPORTED"
+          ) {
             router.push(`/pay/${encodeURIComponent(previous.paymentId)}`);
             return;
           }
@@ -170,12 +173,12 @@ export function OrderCheckout({ id }: { id: string }) {
                   {
                     id: "WALLET",
                     title: "Ví điện tử",
-                    detail: "Quét QR và xác nhận trên điện thoại",
+                    detail: "Báo đã chuyển tiền và chờ nhân viên xác nhận",
                   },
                   {
                     id: "CARD",
-                    title: "Thẻ",
-                    detail: "Thanh toán bằng thẻ giả lập",
+                    title: "Thẻ tại quầy",
+                    detail: "Nhân viên xác nhận sau khi quẹt thẻ",
                   },
                 ] as const
               ).map((option) => (
