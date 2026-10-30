@@ -1,4 +1,5 @@
 import { Column, Entity, PrimaryColumn } from 'typeorm';
+import { DEFAULT_MAX_VOUCHER_USES_PER_USER } from './voucher-usage';
 
 @Entity('vouchers')
 export class Voucher {
@@ -31,4 +32,7 @@ export class Voucher {
 
   @Column({ type: 'boolean', default: true })
   isPublic!: boolean;
+
+  @Column({ type: 'int', default: DEFAULT_MAX_VOUCHER_USES_PER_USER })
+  maxUsesPerUser!: number;
 }

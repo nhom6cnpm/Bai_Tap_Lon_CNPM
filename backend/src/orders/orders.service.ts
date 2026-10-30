@@ -22,6 +22,8 @@ import type { CancellationReason } from './order-expiry';
 import { parsePaymentTimeoutMinutes } from './payment-timeout';
 import { priceOrderItems } from './price-order-items';
 import { assertTransition, type OrderStatus } from './order-status';
+import { cancellationAction } from './order-cancellation';
+import { Payment } from '../payments/entities/payment.entity';
 
 @Injectable()
 export class OrdersService {
@@ -194,6 +196,24 @@ export class OrdersService {
         throw new NotFoundException('Không tìm thấy đơn hàng');
       if (locked.status === 'CANCELLED') return locked;
       if (await this.expireIfNeeded(locked, manager)) return locked;
+      assertTransition(locked.status, 'CANCELLED');
+      const reported = await manager.getRepository(Payment).existsBy({
+        orderId: locked.id,
+        status: 'CUSTOMER_REPORTED',
+      });
+      const action = cancellationAction(
+        locked.status,
+        reported,
+        locked.cancelRequestStatus,
+      );
+      if (action !== 'IMMEDIATE')
+        throw new ConflictException({
+          code:
+            locked.cancelRequestStatus === 'PENDING'
+              ? 'CANCELLATION_REQUEST_PENDING'
+              : 'CANCELLATION_REQUIRES_REVIEW',
+          message: 'Đơn này cần nhân viên xử lý hủy.',
+        });
       return this.cancelLocked(
         locked,
         manager,

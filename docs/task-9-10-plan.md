@@ -3,9 +3,39 @@
 Cập nhật: 30/10/2026. Đây là checklist theo dõi công việc đã thống nhất với Ân.
 Cập nhật dấu hoàn thành theo kết quả thực tế; không đánh dấu xong chỉ vì đã có demo.
 
+## Phương án tiếp theo theo góp ý nhóm (Document 3.docx)
+
+Đã đọc tài liệu và ghi [phương án hủy đơn, tiến trình pha chế, lượt voucher và điểm](task-9-10-team-decisions.md).
+Ưu tiên sửa cuối tài liệu: QR/Thẻ chưa báo chuyển tiền được hủy ngay;
+đã báo hoặc PAID gửi yêu cầu cho nhân viên. Sau đó Ân điều chỉnh voucher: một mã/đơn,
+mỗi đơn PAID dùng một lượt; cấu hình nhiều lượt/user/mã, ví dụ x3. Giữ lượt khi
+PENDING, trả khi hủy, ẩn mã đã dùng hết; hết khả dụng vì đang giữ thì hiện khóa chọn.
+Điểm: 10.000đ thực trả = 1 điểm, chỉ tích/hiển thị.
+
+Checklist triển khai tiếp theo:
+
+1. [x] Chuẩn bị nhánh/bản sao lưu, migration/contract chung cho hạn mức voucher,
+       lượt dùng, điểm, yêu cầu hủy; rà soát/siết API hủy cũ.
+2. [ ] Backend giữ/chốt/trả lượt và cộng/thu hồi điểm trong transaction; kiểm tra
+       đồng thời, gửi lặp và quá hạn trước khi mở giao diện.
+3. [ ] Giao diện voucher còn lượt/đang giữ/ẩn hết lượt; cập nhật điểm và lịch sử.
+4. [ ] Hủy ngay/yêu cầu hủy/nhân viên duyệt hoặc từ chối; UI khách và admin.
+5. [ ] Hai tab quản trị, bảng pha chế PAID → PREPARING → READY → COMPLETED,
+       thông báo READY phía khách.
+6. [ ] Kiểm thử chung, migration trên bản sao, cập nhật tài liệu/Postman, build
+       Docker và chuẩn bị commit/PR theo quy tắc nhóm.
+
+Bước 1 đã hoàn thành trên `feature/task-10-benefits-foundation`: 138 unit và
+93 PostgreSQL/API test qua; migration up/down/up giữ nguyên dữ liệu bản sao.
+[Chi tiết bước 1](task-10-benefits-foundation.md). Chưa bật đếm lượt/điểm hay cập
+nhật Docker; bước tiếp theo là mục 2, nối đầy đủ nghiệp vụ trong transaction.
+
+Chi tiết các điểm bổ sung kỹ thuật và dữ liệu cũ ở tài liệu liên kết. Đây là
+phương án triển khai tiếp theo; chưa có các chức năng mới này trên bản Docker.
+
 ## Cập nhật hiện hành — nhân viên xác nhận thanh toán (30/10)
 
-Nhánh làm việc: `feature/task-9-staff-payment-integration`, trong thư mục chính
+Nhánh bản tích hợp đang chạy Docker: `feature/task-9-staff-payment-integration`, trong thư mục chính
 `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`. Nền main mới: `61f4474`, PR #30.
 Chi tiết và kết quả kiểm tra: [tích hợp thanh toán nhân viên](staff-payment-integration.md).
 
@@ -17,8 +47,8 @@ Chi tiết và kết quả kiểm tra: [tích hợp thanh toán nhân viên](sta
 - Đã kiểm tra: 138 unit, 83 PostgreSQL e2e; 30 ca UI hồi quy và 2 ca UI bổ sung qua.
   Đã build/chạy Docker, đối chiếu giữ nguyên dữ liệu và kiểm tra trang nhân viên
   desktop/mobile. Bản này đã chạy tại `localhost:3000`; chưa push nhánh/merge main.
-- Còn lại: tích điểm/chính sách dùng voucher; nhóm chốt hủy PAID/hoàn tiền và tiến
-  trình pha chế. Chưa thêm các chức năng này trong đợt tích hợp thanh toán.
+- Còn lại: triển khai lượt voucher/điểm, hủy/yêu cầu hủy và tiến trình pha chế theo
+  góp ý mới trong Document 3.docx (xem phương án phía trên).
 
 Các mục bên dưới là nhật ký các bước trước đây; kết quả kiểm thử cũ và mô tả
 callback/5 phút được thay thế bởi bản cập nhật trên.

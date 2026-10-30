@@ -8,6 +8,11 @@ import {
 import { OrderItem } from './order-item.entity';
 import type { OrderStatus } from './order-status';
 import type { CancellationReason } from './order-expiry';
+import {
+  BENEFITS_POLICY_VERSIONS,
+  type BenefitsPolicyVersion,
+} from './benefits-policy';
+import type { CancelRequestStatus } from './order-cancellation';
 
 export type { OrderStatus } from './order-status';
 
@@ -60,4 +65,41 @@ export class Order {
 
   @Column({ type: 'varchar', length: 32, nullable: true })
   cancelReason!: CancellationReason | null;
+
+  // Remains legacy until reservation and settlement are enabled together.
+  @Column({ type: 'int', default: BENEFITS_POLICY_VERSIONS.LEGACY })
+  benefitsPolicyVersion!: BenefitsPolicyVersion;
+
+  @Column({ type: 'int', default: 0 })
+  pointsEarned!: number;
+
+  @Column({ type: 'int', default: 0 })
+  pointsReversed!: number;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  pointsAwardedAt!: Date | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  pointsReversedAt!: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  cancelRequestId!: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  cancelRequestedAt!: Date | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  cancelRequestReason!: string | null;
+
+  @Column({ type: 'varchar', length: 16, nullable: true })
+  cancelRequestStatus!: CancelRequestStatus | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  cancelReviewedAt!: Date | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  cancelReviewedBy!: string | null;
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  cancelReviewNote!: string | null;
 }

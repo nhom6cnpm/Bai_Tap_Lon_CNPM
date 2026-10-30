@@ -28,6 +28,9 @@ import { Payment } from '../src/payments/entities/payment.entity';
 import { PaymentsService } from '../src/payments/payments.service';
 import { Product } from '../src/products/product.entity';
 import { Voucher } from '../src/vouchers/voucher.entity';
+import { BenefitsFoundation1761880000000 } from '../src/migrations/1761880000000-BenefitsFoundation';
+import { VoucherUsage } from '../src/vouchers/voucher-usage.entity';
+import { VoucherUserQuota } from '../src/vouchers/voucher-user-quota.entity';
 import { AddVouchers1761850000000 } from '../src/migrations/1761850000000-AddVouchers';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -111,6 +114,8 @@ describeDatabase(
           PaymentRequestKey,
           OrderInventoryReservation,
           Voucher,
+          VoucherUsage,
+          VoucherUserQuota,
         ],
         migrations: [
           InitialSchema1761580800000,
@@ -122,6 +127,7 @@ describeDatabase(
           AdminPaymentConfirmation1761850000000,
           OrderPaymentTimeoutDefault1761860000000,
           PaymentRequestKeys1761870000000,
+          BenefitsFoundation1761880000000,
         ],
         synchronize: false,
         logging: false,
@@ -447,11 +453,11 @@ describeDatabase(
       expect((await getOrder(created.orderId)).status).toBe('PAID');
     });
 
-    it('allows the state-machine cancellation of PAID and returns stock once', async () => {
+    it('keeps internal PAID cancellation in the state machine and returns stock once', async () => {
       const created = await create();
       await orders.updateOrderStatus(created.orderId, 'PAID');
-      await orders.cancelOrder(userId, created.orderId);
-      await orders.cancelOrder(userId, created.orderId);
+      await orders.updateOrderStatus(created.orderId, 'CANCELLED');
+      await orders.updateOrderStatus(created.orderId, 'CANCELLED');
       expect((await stock()).quantity).toBe(1000);
       expect((await stock()).version).toBe(3);
     });
@@ -1136,7 +1142,7 @@ describeDatabase(
           const first = await checkout(created.orderId, key).expect(201);
           await staffDecision(first.body.paymentId, 'SUCCESS').expect(200);
           if (status === 'CANCELLED')
-            await orders.cancelOrder(userId, created.orderId);
+            await orders.updateOrderStatus(created.orderId, 'CANCELLED');
           else {
             for (const next of ['PREPARING', 'READY', 'COMPLETED'] as const) {
               if (status === 'PAID') break;
@@ -1362,9 +1368,14 @@ describeDatabase(
           orders.cancelOrder(userId, created.orderId),
           orders.cancelOrder(userId, created.orderId),
         ]);
-        expect((await getOrder(created.orderId)).status).toBe('CANCELLED');
-        expect((await stock()).quantity).toBe(1000);
-        expect((await stock()).version).toBe(3);
+        const final = await getOrder(created.orderId);
+        expect(['CANCELLED', 'PAID']).toContain(final.status);
+        expect((await stock()).quantity).toBe(
+          final.status === 'CANCELLED' ? 1000 : 980,
+        );
+        expect((await stock()).version).toBe(
+          final.status === 'CANCELLED' ? 3 : 2,
+        );
       });
     });
 
@@ -1392,6 +1403,272 @@ describeDatabase(
         .expect(200);
       expect((await stock()).quantity).toBe(1000);
     });
+    describe('benefits foundation and customer cancellation guard', () => {
+      const cancel = (id: string, jwt = token) =>
+        request(app.getHttpServer())
+          .post(`/orders/${id}/cancel`)
+          .set('Authorization', `Bearer ${jwt}`);
+      const addVoucher = () =>
+        database.getRepository(Voucher).save({
+          code: 'FOUND3',
+          title: 'Foundation fixture',
+          discountType: 'FIXED',
+          discountValue: 1000,
+          minSubtotal: 0,
+          maxDiscount: null,
+          startsAt: new Date(Date.now() - 60000),
+          endsAt: new Date(Date.now() + 3600000),
+          isActive: true,
+          isPublic: true,
+        });
+
+      it('defaults old/new orders to legacy without awarding points or silently reserving vouchers', async () => {
+        const voucher = await addVoucher();
+        expect(voucher.maxUsesPerUser).toBe(3);
+        const created = await orders.createOrder(userId, {
+          items: [item()],
+          voucherCode: voucher.code,
+        });
+        expect(await getOrder(created.orderId)).toMatchObject({
+          benefitsPolicyVersion: 0,
+          pointsEarned: 0,
+          pointsReversed: 0,
+          pointsAwardedAt: null,
+          pointsReversedAt: null,
+          cancelRequestId: null,
+          cancelRequestStatus: null,
+          cancelReason: null,
+        });
+        expect(await database.getRepository(VoucherUsage).count()).toBe(0);
+        expect(
+          (await database.getRepository(User).findOneByOrFail({ id: userId }))
+            .loyaltyPoints,
+        ).toBe(0);
+      });
+
+      it('supports multiple uses per account, preserves released history, and rejects duplicate usage for one order', async () => {
+        const voucher = await addVoucher();
+        await database
+          .getRepository(VoucherUserQuota)
+          .insert({ userId, voucherCode: voucher.code });
+        const ids: string[] = [];
+        for (let index = 0; index < 3; index++) {
+          const created = await orders.createOrder(userId, {
+            items: [item()],
+            voucherCode: voucher.code,
+          });
+          ids.push(created.orderId);
+          await database.getRepository(VoucherUsage).insert({
+            orderId: created.orderId,
+            userId,
+            voucherCode: voucher.code,
+          });
+        }
+        expect(
+          await database
+            .getRepository(VoucherUsage)
+            .countBy({ userId, voucherCode: voucher.code }),
+        ).toBe(3);
+        await expect(
+          database
+            .getRepository(VoucherUsage)
+            .insert({ orderId: ids[0], userId, voucherCode: voucher.code }),
+        ).rejects.toMatchObject({ driverError: { code: '23505' } });
+        await expect(
+          database
+            .getRepository(VoucherUserQuota)
+            .insert({ userId, voucherCode: voucher.code }),
+        ).rejects.toMatchObject({ driverError: { code: '23505' } });
+        await database
+          .getRepository(VoucherUsage)
+          .update({ orderId: ids[0] }, { status: 'USED', usedAt: new Date() });
+        await database
+          .getRepository(VoucherUsage)
+          .update(
+            { orderId: ids[0] },
+            { status: 'RELEASED', releasedAt: new Date() },
+          );
+        expect(
+          await database
+            .getRepository(VoucherUsage)
+            .findOneByOrFail({ orderId: ids[0] }),
+        ).toMatchObject({
+          status: 'RELEASED',
+          usedAt: expect.any(Date),
+          releasedAt: expect.any(Date),
+        });
+      });
+
+      it('rejects invalid limits, incomplete usage state, unaudited points and incomplete cancellation metadata', async () => {
+        const voucher = await addVoucher();
+        const created = await create();
+        await database
+          .getRepository(VoucherUserQuota)
+          .insert({ userId, voucherCode: voucher.code });
+        await expect(
+          database
+            .getRepository(Voucher)
+            .update(voucher.code, { maxUsesPerUser: 0 }),
+        ).rejects.toMatchObject({ driverError: { code: '23514' } });
+        await expect(
+          database.getRepository(VoucherUsage).insert({
+            orderId: created.orderId,
+            userId,
+            voucherCode: voucher.code,
+            status: 'USED',
+          }),
+        ).rejects.toMatchObject({ driverError: { code: '23514' } });
+        await expect(
+          database
+            .getRepository(Order)
+            .update(created.orderId, { pointsEarned: 7 }),
+        ).rejects.toMatchObject({ driverError: { code: '23514' } });
+        await expect(
+          database
+            .getRepository(Order)
+            .update(created.orderId, { pointsEarned: -1 }),
+        ).rejects.toMatchObject({ driverError: { code: '23514' } });
+        await expect(
+          database
+            .getRepository(Order)
+            .update(created.orderId, { cancelRequestStatus: 'PENDING' }),
+        ).rejects.toMatchObject({ driverError: { code: '23514' } });
+        await expect(
+          database
+            .getRepository(VoucherUserQuota)
+            .insert({ userId: randomUUID(), voucherCode: voucher.code }),
+        ).rejects.toMatchObject({ driverError: { code: '23503' } });
+      });
+
+      it('refuses a destructive downgrade after workflow data has been recorded', async () => {
+        const created = await create();
+        await database.getRepository(Order).update(created.orderId, {
+          benefitsPolicyVersion: 1,
+          pointsAwardedAt: new Date(),
+        });
+        const runner = database.createQueryRunner();
+        await runner.connect();
+        try {
+          await expect(
+            new BenefitsFoundation1761880000000().down(runner),
+          ).rejects.toThrow('Cannot revert');
+          expect((await getOrder(created.orderId)).benefitsPolicyVersion).toBe(
+            1,
+          );
+          expect(await database.getRepository(VoucherUsage).count()).toBe(0);
+        } finally {
+          await runner.release();
+        }
+      });
+
+      it.each(['WALLET', 'CARD'] as const)(
+        'allows immediate cancellation of an unreported %s payment, without changing the deadline',
+        async (method) => {
+          const created = await create();
+          const payment = await payments.createPayment(
+            userId,
+            { orderId: created.orderId, method },
+            randomUUID(),
+          );
+          await cancel(created.orderId).expect(200);
+          await cancel(created.orderId).expect(200);
+          expect((await getOrder(created.orderId)).expiresAt.getTime()).toBe(
+            created.expiresAt.getTime(),
+          );
+          expect((await stock()).quantity).toBe(1000);
+          expect((await stock()).version).toBe(3);
+          await expect(
+            payments.review(adminId, payment.paymentId, 'CONFIRM'),
+          ).rejects.toThrow();
+        },
+      );
+
+      it('does not let a customer cancel a reported or PAID order through the immediate API', async () => {
+        const created = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: created.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.reportPaid(userId, payment.paymentId);
+        const reported = await cancel(created.orderId).expect(409);
+        expect(reported.body.code).toBe('CANCELLATION_REQUIRES_REVIEW');
+        expect((await getOrder(created.orderId)).status).toBe('PENDING');
+        await staffReview(payment.paymentId);
+        await cancel(created.orderId).expect(409);
+        expect((await getOrder(created.orderId)).status).toBe('PAID');
+        expect((await stock()).quantity).toBe(980);
+        expect((await stock()).version).toBe(2);
+      });
+
+      it('allows cancelling PAYMENT_FAILED and still expires reported orders automatically', async () => {
+        const failed = await create();
+        const first = await payments.createPayment(
+          userId,
+          { orderId: failed.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.reportPaid(userId, first.paymentId);
+        await staffReview(first.paymentId, 'FAILED');
+        await cancel(failed.orderId).expect(200);
+        const expiring = await create();
+        const second = await payments.createPayment(
+          userId,
+          { orderId: expiring.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.reportPaid(userId, second.paymentId);
+        await expire(expiring.orderId);
+        await orders.expireUnpaidOrders();
+        await cancel(expiring.orderId).expect(200);
+        expect((await getOrder(expiring.orderId)).cancelReason).toBe(
+          'PAYMENT_TIMEOUT',
+        );
+        expect((await stock()).quantity).toBe(1000);
+      });
+
+      it('blocks immediate cancellation when a request is pending and keeps ownership private', async () => {
+        const created = await create();
+        await database.getRepository(Order).update(created.orderId, {
+          cancelRequestId: randomUUID(),
+          cancelRequestedAt: new Date(),
+          cancelRequestReason: 'Please review',
+          cancelRequestStatus: 'PENDING',
+        });
+        const response = await cancel(created.orderId).expect(409);
+        expect(response.body.code).toBe('CANCELLATION_REQUEST_PENDING');
+        const foreign = app
+          .get(JwtService)
+          .sign({ sub: adminId, email: 'staff@test.local', role: 'ADMIN' });
+        await cancel(created.orderId, foreign).expect(404);
+        expect((await stock()).quantity).toBe(980);
+      });
+
+      it('serializes reporting against immediate cancellation so only one path succeeds', async () => {
+        const created = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: created.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        const results = await Promise.allSettled([
+          payments.reportPaid(userId, payment.paymentId),
+          orders.cancelOrder(userId, created.orderId),
+        ]);
+        expect(
+          results.filter((result) => result.status === 'fulfilled'),
+        ).toHaveLength(1);
+        const final = await getOrder(created.orderId);
+        expect(['CANCELLED', 'PENDING']).toContain(final.status);
+        expect((await stock()).quantity).toBe(
+          final.status === 'CANCELLED' ? 1000 : 980,
+        );
+        expect((await stock()).version).toBe(
+          final.status === 'CANCELLED' ? 3 : 2,
+        );
+      });
+    });
+
     describe('staff confirmation integration', () => {
       it('filters expired sessions before the 100-row limit so new live payments stay visible', async () => {
         await database.query(

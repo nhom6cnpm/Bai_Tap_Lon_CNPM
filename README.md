@@ -24,6 +24,9 @@ Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá tr�
 [ba voucher mẫu](backend/voucher-samples.json) để nạp bằng `npm run vouchers:seed`
 trong backend. Cách chỉnh/xem chi tiết ở tài liệu Task 10e. Tích điểm chưa triển khai.
 
+Bước tiếp theo: [nền dữ liệu lượt voucher, điểm và yêu cầu hủy](docs/task-10-benefits-foundation.md)
+đã có trên nhánh `feature/task-10-benefits-foundation`; chưa bật đếm lượt/tích điểm trên bản Docker.
+
 **Bản tích hợp mới nhất (30/10/2026):** nhánh `feature/task-9-staff-payment-integration`
 đã ghép main `61f4474` (PR #30). [Luồng nhân viên xác nhận, thời hạn 15 phút và cách chạy thử](docs/staff-payment-integration.md).
 Các tài liệu Task 10c/d cũ ghi lại luồng 5 phút/callback trước thay đổi này.
