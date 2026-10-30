@@ -8,7 +8,6 @@ import { formatPrice } from "@/lib/formatPrice";
 import {
   getPayment,
   PaymentApiError,
-  reportPaid,
   type PaymentDetails,
 } from "@/lib/payments/api";
 import {
@@ -81,14 +80,11 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState("");
   const [needsLogin, setNeedsLogin] = useState(false);
-  const [actionError, setActionError] = useState("");
-  const [busy, setBusy] = useState(false);
   const [receivedAt, setReceivedAt] = useState(0);
   const now = useOrderClock(details?.serverTime, receivedAt);
   const ownOrder = useOwnOrder(details?.orderId ?? "");
   const cancellationPending =
     ownOrder.data?.cancelRequest?.status === "PENDING";
-  const { token } = useAuth();
   const mounted = useRef(true);
   const [appUrl, setAppUrl] = useState("");
   const checking = useRef(false);
@@ -166,7 +162,7 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
   const remaining =
     Number.isFinite(deadline) && now !== null ? deadline - now : null;
   const waiting =
-    details?.status === "PENDING" || details?.status === "CUSTOMER_REPORTED";
+    details?.status === "PENDING" || details?.status === "TRANSFER_RECEIVED";
   const orderClosed = details?.orderStatus === "CANCELLED";
 
   useEffect(() => {
@@ -177,34 +173,6 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
     );
     return () => window.clearInterval(poll);
   }, [waiting, orderClosed, refreshStatus]);
-
-  async function handleReportPaid() {
-    if (
-      busy ||
-      details?.status !== "PENDING" ||
-      details.orderStatus !== "PENDING" ||
-      (remaining !== null && remaining <= 0) ||
-      !token
-    )
-      return;
-    if (cancellationPending) return;
-    setBusy(true);
-    setActionError("");
-    try {
-      const requestToken = getStoredToken();
-      const payment = await reportPaid(paymentId);
-      if (mounted.current && getStoredToken() === requestToken)
-        applyDetails(payment);
-    } catch (cause) {
-      setActionError(
-        cause instanceof Error
-          ? cause.message
-          : "Không gửi được thông báo. Vui lòng thử lại.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }
 
   if (!loaded)
     return (
@@ -309,12 +277,26 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
     );
   }
 
-  // QR = order code. Staff scan it at the counter to open this order on the admin page.
-  const qrValue = appUrl
-    ? `${appUrl}/admin/payments?orderId=${encodeURIComponent(details.orderId)}`
-    : details.orderId;
-  const reported = details.status === "CUSTOMER_REPORTED";
   const isWallet = details.method === "WALLET";
+  const received = details.status === "TRANSFER_RECEIVED";
+  const expired = remaining !== null && remaining <= 0;
+  // Ví: QR mở ngân hàng giả lập trên điện thoại. Thẻ: QR = mã đơn, nhân viên quét tại quầy.
+  const mockBankPath = `/mock-bank/${encodeURIComponent(paymentId)}`;
+  const qrValue = !appUrl
+    ? details.orderId
+    : isWallet
+      ? `${appUrl}${mockBankPath}`
+      : `${appUrl}/admin/payments?orderId=${encodeURIComponent(details.orderId)}`;
+  const qrOnLocalhost =
+    isWallet && /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(appUrl);
+  const canTransfer =
+    isWallet &&
+    details.status === "PENDING" &&
+    !expired &&
+    !needsLogin &&
+    !cancellationPending &&
+    !ownOrder.isPending &&
+    !ownOrder.isError;
 
   return (
     <section className="mx-auto max-w-2xl px-4 py-8 sm:py-12">
@@ -336,11 +318,13 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
         {remaining !== null && (
           <p
             role="status"
-            className={`mt-3 text-sm font-semibold ${remaining <= 0 ? "text-red-700" : "text-stone-600"}`}
+            className={`mt-3 text-sm font-semibold ${expired && !received ? "text-red-700" : "text-stone-600"}`}
           >
-            {remaining <= 0
-              ? "Đã quá thời gian chờ thanh toán. Nếu đã trả tiền, vui lòng báo nhân viên."
-              : `Thời gian còn lại: ${formatRemaining(remaining)}`}
+            {received && expired
+              ? "Tiền đã về đúng hạn, đơn được giữ lại chờ nhân viên xác nhận."
+              : expired
+                ? "Đã quá thời gian chờ thanh toán."
+                : `Thời gian còn lại: ${formatRemaining(remaining)}`}
           </p>
         )}
 
@@ -350,30 +334,45 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
               value={qrValue}
               size={200}
               marginSize={2}
-              title={`Mã QR đơn hàng ${details.orderId}`}
+              title={
+                isWallet
+                  ? `Mã QR chuyển khoản đơn ${details.orderId}`
+                  : `Mã QR đơn hàng ${details.orderId}`
+              }
             />
           </div>
           <p className="mt-3 text-sm text-stone-600">
-            Mã QR đơn hàng: nhân viên quét để đối chiếu đơn của bạn.
+            {isWallet
+              ? "Quét mã bằng điện thoại để mở ngân hàng giả lập và chuyển tiền."
+              : "Mã QR đơn hàng: nhân viên quét để đối chiếu đơn của bạn."}
           </p>
+          {qrOnLocalhost && (
+            <p className="mt-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
+              Mã QR đang dùng địa chỉ localhost nên điện thoại không mở được. Mở
+              ứng dụng bằng địa chỉ mạng của máy tính (xem README), hoặc dùng
+              nút “Mở ngân hàng giả lập” bên dưới.
+            </p>
+          )}
         </div>
 
         <ol className="mt-6 list-decimal space-y-2 pl-5 text-sm text-stone-700">
           {isWallet ? (
             <>
               <li>
-                Chuyển <strong>{formatPrice(details.amount)}</strong> vào tài
-                khoản của cửa hàng với nội dung{" "}
+                Quét mã QR bằng điện thoại, hoặc bấm{" "}
+                <strong>“Mở ngân hàng giả lập”</strong>.
+              </li>
+              <li>
+                Kiểm tra số tiền <strong>{formatPrice(details.amount)}</strong>{" "}
+                và nội dung{" "}
                 <strong className="break-all font-mono">
                   {details.orderId}
                 </strong>
-                .
+                , rồi bấm <strong>“Chuyển tiền”</strong>.
               </li>
               <li>
-                Bấm <strong>“Tôi đã chuyển tiền”</strong> bên dưới.
-              </li>
-              <li>
-                Chờ nhân viên kiểm tra và xác nhận, màn hình sẽ tự cập nhật.
+                Nhân viên đối chiếu tiền đã về và xác nhận, màn hình sẽ tự cập
+                nhật.
               </li>
             </>
           ) : (
@@ -394,43 +393,36 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
           )}
         </ol>
 
-        {reported ? (
+        {received ? (
           <div
             role="status"
             className="mt-7 flex items-center gap-3 rounded-2xl bg-sky-50 p-4 text-sky-900"
           >
             <span
               aria-hidden="true"
-              className="h-5 w-5 animate-spin rounded-full border-2 border-sky-700 border-t-transparent"
+              className="h-5 w-5 shrink-0 animate-spin rounded-full border-2 border-sky-700 border-t-transparent"
             />
             <span>
-              <strong>Đang chờ nhân viên xác nhận…</strong>
+              <strong>Đã nhận tiền, đang chờ nhân viên xác nhận…</strong>
               <br />
               <span className="text-sm">
-                Bạn đã báo chuyển tiền. Không cần bấm lại.
+                Ngân hàng giả lập đã ghi nhận khoản chuyển. Không cần chuyển
+                lại.
               </span>
             </span>
           </div>
-        ) : (
-          isWallet && (
-            <button
-              type="button"
-              onClick={() => void handleReportPaid()}
-              disabled={
-                busy ||
-                needsLogin ||
-                cancellationPending ||
-                ownOrder.isPending ||
-                ownOrder.isError ||
-                (remaining !== null && remaining <= 0)
-              }
-              className="mt-7 w-full rounded-xl bg-amber-800 px-4 py-3 font-bold text-white hover:bg-amber-900 disabled:opacity-50"
+        ) : isWallet ? (
+          canTransfer && (
+            <a
+              href={mockBankPath}
+              target="_blank"
+              rel="noopener"
+              className="mt-7 block w-full rounded-xl bg-amber-800 px-4 py-3 text-center font-bold text-white hover:bg-amber-900"
             >
-              {busy ? "Đang gửi…" : "Tôi đã chuyển tiền"}
-            </button>
+              Mở ngân hàng giả lập
+            </a>
           )
-        )}
-        {!reported && !isWallet && (
+        ) : (
           <p
             role="status"
             className="mt-7 rounded-2xl bg-stone-50 p-4 text-sm text-stone-700"
@@ -439,11 +431,7 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
           </p>
         )}
         {ownOrder.data && !ownOrder.isError && (
-          <OrderCancellation
-            order={ownOrder.data}
-            serverNow={now}
-            disabled={busy}
-          />
+          <OrderCancellation order={ownOrder.data} serverNow={now} />
         )}
 
         {error && (
@@ -452,14 +440,6 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
             className="mt-5 rounded-xl bg-amber-50 p-3 text-sm text-amber-900"
           >
             {error}
-          </p>
-        )}
-        {actionError && (
-          <p
-            role="alert"
-            className="mt-5 rounded-xl bg-red-50 p-3 text-sm text-red-800"
-          >
-            {actionError}
           </p>
         )}
         {needsLogin && (

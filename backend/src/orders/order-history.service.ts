@@ -77,12 +77,13 @@ export class OrderHistoryService {
       );
       const payment =
         candidates.find((entry) => entry.status === 'SUCCESS') ?? candidates[0];
+      const transferReceived = candidates.some(
+        (entry) => entry.status === 'TRANSFER_RECEIVED',
+      );
       return {
-        ...cancellationCapabilities(
-          order,
-          candidates.some((entry) => entry.status === 'TRANSFER_RECEIVED'),
-          now,
-        ),
+        ...cancellationCapabilities(order, transferReceived, now),
+        // Money arrived but staff have not decided: never auto-expired
+        transferReceived,
         id: order.id,
         status: order.status,
         total: order.total,

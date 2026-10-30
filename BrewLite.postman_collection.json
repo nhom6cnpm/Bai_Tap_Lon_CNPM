@@ -446,16 +446,19 @@
 					}
 				},
 				{
-					"name": "Report Paid (Tôi đã chuyển tiền)",
+					"name": "Mock Bank - Transfer Info (public)",
+					"request": {
+						"method": "GET",
+						"header": [],
+						"url": "http://localhost:3001/mock-bank/payments/<PAYMENT_ID>"
+					}
+				},
+				{
+					"name": "Mock Bank - Chuyển tiền (TRANSFER_RECEIVED, đơn vẫn PENDING)",
 					"request": {
 						"method": "POST",
-						"header": [
-							{
-								"key": "Authorization",
-								"value": "Bearer <YOUR_JWT_TOKEN>"
-							}
-						],
-						"url": "http://localhost:3001/payments/<PAYMENT_ID>/report-paid"
+						"header": [],
+						"url": "http://localhost:3001/mock-bank/payments/<PAYMENT_ID>/transfer"
 					}
 				}
 			]
@@ -528,7 +531,7 @@
 					}
 				},
 				{
-					"name": "Reject Payment (order -> PAYMENT_FAILED)",
+					"name": "Reject Payment (order -> PAYMENT_FAILED, hoàn tiền đã nhận)",
 					"request": {
 						"method": "POST",
 						"header": [
@@ -559,6 +562,19 @@
 							}
 						],
 						"url": "http://localhost:3001/admin/payments"
+					}
+				},
+				{
+					"name": "Bank Statement (Sao kê ngân hàng giả lập)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/bank-transactions?orderId=<ORDER_ID>"
 					}
 				}
 			]

@@ -68,6 +68,8 @@ services:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
       NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
       NEXT_PUBLIC_ORDER_PAYMENT_TIMEOUT_MINUTES: ${ORDER_PAYMENT_TIMEOUT_MINUTES:-15}
+      # Server-side address used by the mock bank proxy (/api/mock-bank)
+      API_INTERNAL_URL: http://backend:3001
     ports:
       - "3000:3000"
     healthcheck:

@@ -59,6 +59,10 @@ export interface Order extends OrderBenefits, OrderCancellation {
   cancelledAt: string | null;
   cancelReason: string | null;
   paymentMethod: "WALLET" | "CARD" | null;
+  /** Ngân hàng giả lập: money given back to the customer for this order */
+  refundedAmount: number;
+  /** Money arrived, staff have not decided yet (never auto-expired) */
+  transferReceived: boolean;
   serverTime: string;
   canPay: boolean;
   items: OrderItem[];

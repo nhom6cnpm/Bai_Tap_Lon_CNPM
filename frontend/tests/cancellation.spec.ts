@@ -76,10 +76,9 @@ async function order(
     paymentId = (await opened.json()).paymentId;
     if (reported)
       expect(
+        // Ngân hàng giả lập: money arrives, staff must decide
         (
-          await request.post(`${api}/payments/${paymentId}/report-paid`, {
-            headers,
-          })
+          await request.post(`${api}/mock-bank/payments/${paymentId}/transfer`)
         ).ok(),
       ).toBe(true);
   }
@@ -162,7 +161,7 @@ test("cancels an unreported QR payment and shows a closed order instead of a rej
     page.getByRole("heading", { name: "Thanh toán thất bại" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Tôi đã chuyển tiền" }),
+    page.getByRole("link", { name: "Mở ngân hàng giả lập" }),
   ).toHaveCount(0);
   await fits(page, "cancel-qr.png");
 });

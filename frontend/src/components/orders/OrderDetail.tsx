@@ -1,4 +1,6 @@
 "use client";
+
+import { formatPrice } from "@/lib/formatPrice";
 import PriceSummary from "@/components/PriceSummary";
 import Link from "next/link";
 import { useEffect } from "react";
@@ -148,6 +150,15 @@ export function OrderDetail({
                   {order.cancelledAt && (
                     <p className="mt-3 text-sm text-stone-500">
                       Hủy lúc {formatDate(order.cancelledAt)}
+                    </p>
+                  )}
+                  {order.refundedAmount > 0 && (
+                    <p
+                      role="status"
+                      className="mt-3 rounded-xl bg-green-50 p-3 text-sm text-green-900"
+                    >
+                      Đã hoàn {formatPrice(order.refundedAmount)} về tài khoản
+                      của bạn (ngân hàng giả lập).
                     </p>
                   )}
                   <button

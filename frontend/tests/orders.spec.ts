@@ -1,4 +1,4 @@
-import { reviewAsStaff } from "./staff";
+import { payWithMockBank, reviewAsStaff } from "./staff";
 import {
   expect,
   test,
@@ -65,6 +65,8 @@ function order(status: OrderStatus, index = 0, expiresIn = 240000): Order {
     cancelledAt: status === "CANCELLED" ? new Date(now).toISOString() : null,
     cancelReason: status === "CANCELLED" ? "PAYMENT_TIMEOUT" : null,
     paymentMethod: status === "PAID" ? "WALLET" : null,
+    refundedAmount: 0,
+    transferReceived: false,
     serverTime: new Date(now).toISOString(),
     canPay: ["PENDING", "PAYMENT_FAILED"].includes(status) && expiresIn > 0,
     items: [
@@ -355,14 +357,9 @@ test("live wallet QR on a second device leads to own PAID confirmation and histo
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
   await expect(page).toHaveURL(/\/pay\/PAY-/);
   await expect(
-    page.getByRole("img", { name: `Mã QR đơn hàng ${id}` }),
+    page.getByRole("img", { name: `Mã QR chuyển khoản đơn ${id}` }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
-    .click();
-  await expect(
-    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
-  ).toBeVisible();
+  await payWithMockBank(page);
   const pending = await (
     await request.get(`${api}/orders/${id}`, {
       headers: { Authorization: `Bearer ${auth.access_token}` },
@@ -489,9 +486,7 @@ test("paying an earlier order preserves a newer different cart", async ({
     localStorage.getItem("brewlite-cart"),
   );
   await page.goto(paymentUrl);
-  await page
-    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
-    .click();
+  await payWithMockBank(page);
   await reviewAsStaff(browser, request, id);
   await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
   expect(await page.evaluate(() => localStorage.getItem("brewlite-cart"))).toBe(
@@ -514,17 +509,14 @@ test("reported payment resumes safely with a skewed browser clock; customer has 
   await expect(page.getByRole("status")).toContainText(
     /Thời gian còn lại: 1[34]:/,
   );
-  await page
-    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
-    .click();
-  await expect(
-    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
-  ).toBeVisible();
+  await payWithMockBank(page);
   await page.goto(`/checkout/${id}`);
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
   await expect(page).toHaveURL(paymentUrl);
   await expect(
-    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
+    page.getByText("Đã nhận tiền, đang chờ nhân viên xác nhận…", {
+      exact: true,
+    }),
   ).toBeVisible();
   await page.goto("/admin/payments");
   await expect(
@@ -535,7 +527,9 @@ test("reported payment resumes safely with a skewed browser clock; customer has 
   ).toHaveCount(0);
   await page.goto(paymentUrl);
   await expect(
-    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
+    page.getByText("Đã nhận tiền, đang chờ nhân viên xác nhận…", {
+      exact: true,
+    }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Đăng xuất", exact: true }).click();
   await expect(

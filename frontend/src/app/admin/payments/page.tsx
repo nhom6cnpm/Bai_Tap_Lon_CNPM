@@ -14,6 +14,9 @@ import {
 } from "@/lib/admin/payments";
 import { PaymentApiError, type PaymentStatus } from "@/lib/payments/api";
 import { useOrderClock } from "@/hooks/useOrderHistory";
+import BankStatement from "@/components/admin/BankStatement";
+
+type BoardView = AdminPaymentFilter | "STATEMENT";
 
 // Polling (no WebSocket/SSE): ask the backend again every few seconds
 const POLL_INTERVAL_MS = 4000;
@@ -23,11 +26,11 @@ const BASE_TITLE = "Xác nhận thanh toán · BrewLite";
 const STATUS_LABEL: Record<PaymentStatus, { text: string; className: string }> =
   {
     PENDING: {
-      text: "Chưa báo chuyển tiền",
+      text: "Chưa thấy tiền về",
       className: "bg-stone-100 text-stone-700",
     },
-    CUSTOMER_REPORTED: {
-      text: "Khách báo đã chuyển",
+    TRANSFER_RECEIVED: {
+      text: "Tiền đã về",
       className: "bg-sky-100 text-sky-900",
     },
     SUCCESS: { text: "Đã xác nhận", className: "bg-green-100 text-green-800" },
@@ -86,7 +89,8 @@ function AdminPaymentsBoard() {
   const { token } = useAuth();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const [filter, setFilter] = useState<AdminPaymentFilter>("ACTIVE");
+  const [view, setView] = useState<BoardView>("ACTIVE");
+  const filter: AdminPaymentFilter = view === "STATEMENT" ? "ACTIVE" : view;
   const [orderSearch, setOrderSearch] = useState(
     () => searchParams.get("orderId") ?? "",
   );
@@ -103,10 +107,10 @@ function AdminPaymentsBoard() {
     );
   }, []);
 
-  // Detect customers who just pressed "Tôi đã chuyển tiền" since the last poll
+  // Detect payments whose money just arrived in the mock bank since the last poll
   const notifyNewReports = useCallback(
     (rows: AdminPayment[]) => {
-      const reported = rows.filter((row) => row.status === "CUSTOMER_REPORTED");
+      const reported = rows.filter((row) => row.status === "TRANSFER_RECEIVED");
       if (seenReported.current === null) {
         seenReported.current = new Set(reported.map((row) => row.paymentId));
         return;
@@ -116,9 +120,7 @@ function AdminPaymentsBoard() {
       );
       fresh.forEach((row) => {
         seenReported.current?.add(row.paymentId);
-        pushToast(
-          `Đơn ${row.orderId} báo đã chuyển ${formatPrice(row.amount)}`,
-        );
+        pushToast(`Đơn ${row.orderId}: tiền đã về ${formatPrice(row.amount)}`);
       });
       if (fresh.length > 0) playBeep();
     },
@@ -140,7 +142,7 @@ function AdminPaymentsBoard() {
   const rows = query.data ?? [];
   const now = useOrderClock(rows[0]?.serverTime, query.dataUpdatedAt);
   const waitingCount = rows.filter(
-    (row) => row.status === "CUSTOMER_REPORTED",
+    (row) => row.status === "TRANSFER_RECEIVED",
   ).length;
 
   // Waiting count in the browser tab, visible even when staff are on another tab
@@ -182,19 +184,25 @@ function AdminPaymentsBoard() {
   });
 
   function handleConfirm(row: AdminPayment) {
-    if (
-      window.confirm(
-        `Xác nhận đã nhận ${formatPrice(row.amount)} cho đơn ${row.orderId}?`,
-      )
-    ) {
+    const question =
+      row.method === "WALLET" && row.status !== "TRANSFER_RECEIVED"
+        ? `Sao kê chưa thấy tiền về cho đơn ${row.orderId}.\nVẫn xác nhận đã nhận ${formatPrice(row.amount)}?`
+        : `Xác nhận đã nhận ${formatPrice(row.amount)} cho đơn ${row.orderId}?`;
+    if (window.confirm(question)) {
       review.mutate({ paymentId: row.paymentId, decision: "confirm" });
     }
   }
 
   function handleReject(row: AdminPayment) {
+    const refundNotice =
+      row.status === "TRANSFER_RECEIVED"
+        ? `\nHệ thống sẽ hoàn ${formatPrice(row.amount)} cho khách.`
+        : "";
     const note = window.prompt(
-      `Từ chối thanh toán đơn ${row.orderId}?\nLý do (khách sẽ thấy):`,
-      "Chưa nhận được tiền",
+      `Từ chối thanh toán đơn ${row.orderId}?${refundNotice}\nLý do (khách sẽ thấy):`,
+      row.status === "TRANSFER_RECEIVED"
+        ? "Thông tin chuyển khoản không khớp"
+        : "Chưa nhận được tiền",
     );
     if (note !== null)
       review.mutate({ paymentId: row.paymentId, decision: "reject", note });
@@ -235,8 +243,8 @@ function AdminPaymentsBoard() {
             Xác nhận thanh toán
           </h1>
           <p className="mt-1 text-sm text-stone-600">
-            Tự làm mới mỗi {POLL_INTERVAL_MS / 1000} giây · {waitingCount} khách
-            đang chờ xác nhận
+            Tự làm mới mỗi {POLL_INTERVAL_MS / 1000} giây · {waitingCount} đơn
+            đã có tiền về, chờ xác nhận
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -248,14 +256,19 @@ function AdminPaymentsBoard() {
             aria-label="Tìm theo mã đơn"
             className="w-52 rounded-xl border border-stone-300 px-3 py-2 text-sm focus:outline-2 focus:outline-amber-800"
           />
-          {(["ACTIVE", "ALL"] as const).map((option) => (
+          {(["ACTIVE", "ALL", "STATEMENT"] as const).map((option) => (
             <button
               key={option}
               type="button"
-              onClick={() => setFilter(option)}
-              className={`rounded-full px-4 py-2 text-sm font-semibold ${filter === option ? "bg-amber-800 text-white" : "border border-stone-300 text-stone-700 hover:bg-stone-100"}`}
+              onClick={() => setView(option)}
+              aria-pressed={view === option}
+              className={`rounded-full px-4 py-2 text-sm font-semibold ${view === option ? "bg-amber-800 text-white" : "border border-stone-300 text-stone-700 hover:bg-stone-100"}`}
             >
-              {option === "ACTIVE" ? "Đang chờ" : "Tất cả"}
+              {option === "ACTIVE"
+                ? "Đang chờ"
+                : option === "ALL"
+                  ? "Tất cả"
+                  : "Sao kê"}
             </button>
           ))}
         </div>
@@ -271,7 +284,9 @@ function AdminPaymentsBoard() {
       )}
 
       <div className="mt-6">
-        {query.isPending ? (
+        {view === "STATEMENT" ? (
+          <BankStatement orderId={orderSearch} />
+        ) : query.isPending ? (
           <p className="rounded-2xl border border-stone-200 bg-white p-8 text-center text-stone-600">
             Đang tải danh sách thanh toán…
           </p>
@@ -315,20 +330,22 @@ function AdminPaymentsBoard() {
           <ul className="grid min-w-0 grid-cols-1 gap-3">
             {rows.map((row) => {
               const label = STATUS_LABEL[row.status];
-              const active =
-                (row.status === "PENDING" ||
-                  row.status === "CUSTOMER_REPORTED") &&
-                row.orderStatus === "PENDING" &&
+              const inTime =
                 now !== null &&
                 !!row.expiresAt &&
                 Date.parse(row.expiresAt) > now;
+              const moneyArrived = row.status === "TRANSFER_RECEIVED";
+              // Money that arrived in time keeps the order open after the deadline
+              const active =
+                row.orderStatus === "PENDING" &&
+                (moneyArrived || (row.status === "PENDING" && inTime));
               const busy =
                 review.isPending &&
                 review.variables?.paymentId === row.paymentId;
               return (
                 <li
                   key={row.paymentId}
-                  className={`min-w-0 rounded-2xl border bg-white p-4 shadow-sm sm:p-5 ${row.status === "CUSTOMER_REPORTED" ? "border-sky-300 ring-1 ring-sky-200" : "border-stone-200"}`}
+                  className={`min-w-0 rounded-2xl border bg-white p-4 shadow-sm sm:p-5 ${moneyArrived ? "border-sky-300 ring-1 ring-sky-200" : "border-stone-200"}`}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 max-w-full">
@@ -366,8 +383,8 @@ function AdminPaymentsBoard() {
                       <dd>{formatTime(row.createdAt)}</dd>
                     </div>
                     <div>
-                      <dt className="text-stone-500">Khách báo lúc</dt>
-                      <dd>{formatTime(row.reportedAt)}</dd>
+                      <dt className="text-stone-500">Tiền về lúc</dt>
+                      <dd>{formatTime(row.receivedAt)}</dd>
                     </div>
                     <div>
                       <dt className="text-stone-500">
@@ -375,7 +392,9 @@ function AdminPaymentsBoard() {
                       </dt>
                       <dd>
                         {active
-                          ? formatRemaining(row.expiresAt, now)
+                          ? moneyArrived && !inTime
+                            ? "Quá hạn (đã có tiền)"
+                            : formatRemaining(row.expiresAt, now)
                           : (row.orderStatus ?? "—")}
                       </dd>
                     </div>

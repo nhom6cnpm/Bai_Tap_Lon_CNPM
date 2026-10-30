@@ -1,4 +1,29 @@
-import { expect, type APIRequestContext, type Browser } from "@playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Browser,
+  type Page,
+} from "@playwright/test";
+
+/** Opens the mock bank for the payment shown on `page` and presses "Chuyển tiền". */
+export async function payWithMockBank(page: Page) {
+  const paymentId = new URL(page.url()).pathname.split("/").pop()!;
+  const bank = await page.context().newPage();
+  try {
+    await bank.goto(`/mock-bank/${paymentId}`);
+    await bank.getByRole("button", { name: /^Chuyển tiền/ }).click();
+    await expect(
+      bank.getByText("Đã chuyển tiền đến BrewLite.", { exact: false }),
+    ).toBeVisible();
+  } finally {
+    await bank.close();
+  }
+  await expect(
+    page.getByText("Đã nhận tiền, đang chờ nhân viên xác nhận…", {
+      exact: true,
+    }),
+  ).toBeVisible();
+}
 
 export async function reviewAsStaff(
   browser: Browser,

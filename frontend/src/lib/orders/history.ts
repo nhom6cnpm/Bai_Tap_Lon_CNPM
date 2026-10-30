@@ -41,8 +41,18 @@ function isItem(value: unknown): value is OrderItem {
     money(value.lineTotal)
   );
 }
-type OrderWire = Omit<Order, keyof OrderBenefits | keyof OrderCancellation> &
-  Partial<OrderBenefits & OrderCancellation>;
+type OrderWire = Omit<
+  Order,
+  | keyof OrderBenefits
+  | keyof OrderCancellation
+  | "refundedAmount"
+  | "transferReceived"
+> &
+  Partial<
+    OrderBenefits &
+      OrderCancellation &
+      Pick<Order, "refundedAmount" | "transferReceived">
+  >;
 function validCancellation(value: Record<string, unknown>): boolean {
   if (
     value.canCancelImmediately === undefined &&
@@ -121,6 +131,9 @@ function isOrder(value: unknown): value is OrderWire {
       value.paymentMethod === "CARD" ||
       value.paymentMethod === "WALLET") &&
     typeof value.canPay === "boolean" &&
+    (value.refundedAmount === undefined || money(value.refundedAmount)) &&
+    (value.transferReceived === undefined ||
+      typeof value.transferReceived === "boolean") &&
     Array.isArray(value.items) &&
     value.items.every(isItem)
   );
@@ -137,6 +150,8 @@ function withBenefits(order: OrderWire): Order {
     canCancelImmediately: order.canCancelImmediately ?? false,
     canRequestCancellation: order.canRequestCancellation ?? false,
     cancelRequest: order.cancelRequest ?? null,
+    refundedAmount: order.refundedAmount ?? 0,
+    transferReceived: order.transferReceived ?? false,
   };
 }
 
