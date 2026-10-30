@@ -26,6 +26,8 @@ ENV NODE_ENV=production
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/voucher-samples.json ./voucher-samples.json
 
 EXPOSE 3001
 

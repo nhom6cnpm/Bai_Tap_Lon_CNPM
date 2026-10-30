@@ -8,6 +8,11 @@ import { Ingredient } from './src/inventory/ingredient.entity';
 import { RecipeItem } from './src/inventory/recipe-item.entity';
 import { ToppingRecipe } from './src/inventory/topping-recipe.entity';
 import { Payment } from './src/payments/entities/payment.entity';
+import { OrderInventoryReservation } from './src/orders/order-inventory-reservation.entity';
+import { Voucher } from './src/vouchers/voucher.entity';
+import { PaymentRequestKey } from './src/payments/entities/payment-request-key.entity';
+import { VoucherUserQuota } from './src/vouchers/voucher-user-quota.entity';
+import { VoucherUsage } from './src/vouchers/voucher-usage.entity';
 
 export const AppDataSource = new DataSource({
   type: 'postgres',
@@ -23,6 +28,11 @@ export const AppDataSource = new DataSource({
     RecipeItem,
     ToppingRecipe,
     Payment,
+    OrderInventoryReservation,
+    Voucher,
+    PaymentRequestKey,
+    VoucherUserQuota,
+    VoucherUsage,
   ],
   migrations: ['src/migrations/*{.ts,.js}'],
 });

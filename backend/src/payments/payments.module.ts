@@ -7,9 +7,10 @@ import { OrdersModule } from '../orders/orders.module';
 import { Order } from '../orders/order.entity';
 import { User } from '../auth/user.entity';
 import { Payment } from './entities/payment.entity';
+import { PaymentRequestKey } from './entities/payment-request-key.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Payment, Order, User]), OrdersModule],
+  imports: [TypeOrmModule.forFeature([Payment, PaymentRequestKey, Order, User]), OrdersModule],
   controllers: [PaymentsController, AdminPaymentsController],
   providers: [PaymentsService],
   exports: [PaymentsService],

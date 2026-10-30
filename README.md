@@ -2,7 +2,60 @@
 
 Ứng dụng đặt cà phê không dùng tiền mặt — Bài tập lớn môn Công nghệ Phần mềm, Trường Đại học Sài Gòn (HK I, 2026–2027).
 
+Nền làm việc Task 9: [kế hoạch tích hợp với schema và auth của nhóm](docs/task-9-integration-plan.md).
+
+Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integration.md),
+[kết quả kiểm thử](docs/task-9-validation.md).
+
+Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`.
+Bản làm việc và Docker hiện tại ở nhánh `feature/task-9-10-handoff`, đã tích hợp
+Task 9/10c/d/e với thanh toán nhân viên và tiến trình pha chế, dựa trên main `61f4474`.
+Các nhánh cũ vẫn được giữ;
+[ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
+
+**Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
+— checklist, phạm vi đã chốt và bước tiếp theo.
+
+Task 10c: [giữ nguyên liệu, hủy/hết hạn và kiểm thử PostgreSQL](docs/task-10c-inventory.md).
+
+Task 10d: [khóa yêu cầu thanh toán và gửi lại an toàn](docs/task-10d-payments.md).
+
+Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá trên đơn](docs/task-10e-vouchers.md).
+Đã có giao diện và nền xử lý trên nhánh `feature/task-10-vouchers`; có cấu hình
+[ba voucher công khai và mã nhập riêng mẫu `NHAP7K`](backend/voucher-samples.json)
+để nạp bằng `npm run vouchers:seed`
+trong backend. Cách chỉnh/xem chi tiết ở tài liệu Task 10e.
+
+[Nền dữ liệu lượt voucher, điểm và yêu cầu hủy](docs/task-10-benefits-foundation.md)
+đã được nâng cấp trên Docker; đơn cũ giữ policy 0, đơn mới áp dụng policy 1.
+
+[Backend hạn mức voucher và tích điểm](docs/task-10-voucher-points.md) đã hoàn thành
+trên `feature/task-10-voucher-points`; giữ/chốt/trả lượt và điểm theo transaction.
+[Giao diện số lượt voucher và cập nhật điểm](docs/task-10-voucher-points-ui.md)
+đã hoàn thành trên `feature/task-10-voucher-points-ui` và đã cập nhật Docker ở bước 6.
+
+[Bước 4 — hủy ngay/yêu cầu hủy và nhân viên duyệt](docs/task-9-cancellation-review.md)
+đã hoàn thành trên `feature/task-9-cancellation-review`, kế thừa các bước voucher/điểm.
+Có giao diện khách và `/admin/orders`.
+
+[Bước 5 — bảng pha chế và thông báo nhận món](docs/task-9-preparation-board.md)
+triển khai trên `feature/task-9-preparation-board`, kế thừa các bước trước.
+Nhân viên cập nhật PAID → PREPARING → READY → COMPLETED; khách theo dõi trên lịch
+sử/chi tiết đơn. Bản Docker đang chạy đã có các bước này.
+
+**Bản bàn giao mới nhất (30/10/2026):** [kết quả và luồng chạy thử Task 9/10c/d/e](docs/task-9-10-handoff.md).
+Mở http://localhost:3000/menu; nhân viên dùng `/admin/payments` và `/admin/orders`.
+Docker giữ chỗ 15 phút, có voucher/điểm/hủy/pha chế, ba dịch vụ có healthcheck.
+Đã qua 62/62 ca desktop/mobile trên production image, thử migration trên bản sao
+và giữ nguyên dữ liệu cũ. [Draft PR #31](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/pull/31)
+đã được tạo, còn review nhóm trước merge; không push trực tiếp main.
+Các tài liệu Task 10c/d cũ ghi luồng 5 phút/callback là lịch sử triển khai.
+
 ## Công nghệ
+
+API và giao diện số ly còn bán theo size/topping:
+[hướng dẫn tích hợp](docs/selection-availability.md).
+
 | Thành phần | Công nghệ |
 |---|---|
 | Backend | NestJS (TypeScript), REST API |
@@ -48,26 +101,34 @@ Kiểm tra:
 - **API danh sách sản phẩm**: http://localhost:3001/products
 - **PostgreSQL**: `localhost:5432` (user/pass/db: `brewlite`)
 
-### Thanh toán và trang admin (nhân viên xác nhận)
+### Quét QR thanh toán bằng điện thoại khi chạy Docker
 
-Thanh toán **không** để khách tự xác nhận. Luồng:
-
-1. Khách đặt đơn → đơn `PENDING`, chọn **Chuyển khoản / Ví** hoặc **Thẻ tại quầy**.
-2. Màn hình thanh toán hiện **mã QR chứa mã đơn**. Khách chuyển tiền với nội dung là mã đơn, rồi bấm **"Tôi đã chuyển tiền"**. Lúc này đơn **vẫn là `PENDING`**, phiên thanh toán chuyển sang `CUSTOMER_REPORTED`.
-3. Nhân viên mở **http://localhost:3000/admin/payments**. Trang tự làm mới mỗi 4 giây, có thông báo, âm báo và số khách đang chờ trên tab.
-4. Nhân viên bấm **Xác nhận đã nhận tiền** → đơn `PAID`, hoặc **Từ chối** → đơn `PAYMENT_FAILED` (khách có thể thử lại). Màn hình của khách tự cập nhật.
-
-Tài khoản admin được tạo sẵn khi backend khởi động, lấy từ biến môi trường `ADMIN_EMAIL` / `ADMIN_PASSWORD` (mặc định `admin@brewlite.vn` / `admin123`). Khi nộp hoặc triển khai thật, hãy đổi mật khẩu này trong file `.env`. Tài khoản khách thường gọi API `/admin/*` sẽ nhận lỗi 403.
-
-Để nhân viên quét QR của khách bằng điện thoại (cùng mạng Wi-Fi), tạo file `.env` ở **thư mục gốc của repo** và điền IPv4 của máy tính:
+Điện thoại và máy tính phải cùng mạng Wi-Fi. Ở **thư mục gốc của repo** (cùng cấp với `docker-compose.yml`), tạo file `.env` và điền địa chỉ IPv4 của máy tính:
 
 ```env
 NEXT_PUBLIC_APP_URL=http://<IP-máy-tính>:3000
 ```
 
-Trên Windows, chạy `ipconfig` để xem IPv4. Trên macOS, chạy `ipconfig getifaddr en0`. Sau đó chạy `docker compose up -d --build frontend`. File `.env` được Git bỏ qua.
+Trên Windows, chạy `ipconfig` để xem IPv4 Wi-Fi. Sau khi thay đổi địa chỉ,
+chạy `docker compose up -d --build frontend`. Nếu mở cả ứng dụng trên điện thoại,
+cần cấu hình thêm `NEXT_PUBLIC_API_URL=http://<IP-máy-tính>:3001` và
+`FRONTEND_URL=http://<IP-máy-tính>:3000`. File `.env` được Git bỏ qua.
 
-Mỗi đơn có **15 phút** để thanh toán và chờ nhân viên xác nhận. Để đổi, thêm `ORDER_PAYMENT_TIMEOUT_MINUTES=<số phút>` vào `.env` ở thư mục gốc rồi build lại. Compose truyền cùng giá trị này cho backend và frontend. Việc tự hủy đơn quá hạn thuộc Task 10c.
+QR hiện chứa liên kết `/admin/payments?orderId=...` để **nhân viên** tra cứu đơn;
+phải đăng nhập ADMIN để duyệt. Khách bấm **Tôi đã chuyển tiền** chỉ báo cho nhân viên,
+đơn vẫn PENDING. Nhân viên xác nhận mới chuyển PAID; từ chối chuyển PAYMENT_FAILED.
+Đây là luồng mô phỏng xác nhận tại cửa hàng, chưa tích hợp ngân hàng/VNPay.
+
+Task 10c giữ nguyên liệu khi tạo đơn PENDING, mặc định **15 phút từ lúc tạo đơn**
+theo cập nhật Task 8 ngày 30/10. Thời hạn được lưu trong `orders.expiresAt`;
+checkout/QR dùng đồng hồ backend, thử lại không gia hạn và PAID không trừ thêm.
+`ORDER_PAYMENT_TIMEOUT_MINUTES` trong `.env` gốc (Docker) hoặc `backend/.env`
+(chạy local) chỉ áp dụng cho đơn mới. Đơn cũ giữ nguyên hạn.
+
+Trang nhân viên: http://localhost:3000/admin/payments. Docker có tài khoản phát triển
+mặc định `admin@brewlite.vn` / `admin123`; có thể đổi qua `ADMIN_EMAIL` và
+`ADMIN_PASSWORD`. Với tài khoản đã tồn tại, seed giữ mật khẩu cũ. Chạy local cần
+điền hai biến này trong `backend/.env`. Không còn yêu cầu `PAYMENT_GATEWAY_SECRET`.
 
 Dừng và dọn dẹp container:
 ```bash
@@ -92,7 +153,7 @@ docker run -d --name brewlite-postgres -p 5432:5432 -e POSTGRES_USER=brewlite -e
 ```bash
 cd backend
 cp .env.example .env
-# Điền JWT_SECRET vào .env
+# Điền JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD vào .env
 npm install
 npm run start:dev
 ```
@@ -118,9 +179,13 @@ cd backend
 # Chạy kiểm thử đơn vị (Unit Tests)
 npm test
 
-# Chạy kiểm thử tích hợp (e2e Tests) — yêu cầu PostgreSQL đang chạy:
-# (Khởi động DB: docker compose up -d postgres)
+# Chạy e2e với PostgreSQL và database riêng, tên phải kết thúc bằng _test.
+# Tạo DB một lần từ thư mục gốc:
+# docker compose exec postgres createdb -U brewlite brewlite_task10_test
+# PowerShell, từ backend:
+$env:TEST_DATABASE_URL = 'postgresql://brewlite:brewlite@127.0.0.1:5432/brewlite_task10_test'
 npm run test:e2e
+# Không đặt TEST_DATABASE_URL thì các suite DB bị skip, không phải test đã qua.
 
 # Kiểm tra linter
 npm run lint

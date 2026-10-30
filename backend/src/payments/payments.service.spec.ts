@@ -13,6 +13,7 @@ import { Order } from '../orders/order.entity';
 import { assertTransition, type OrderStatus } from '../orders/order-status';
 import { User } from '../auth/user.entity';
 import { Payment } from './entities/payment.entity';
+import { PaymentRequestKey } from './entities/payment-request-key.entity';
 
 type Row = Record<string, unknown>;
 
@@ -20,7 +21,9 @@ type Row = Record<string, unknown>;
 const matches = (row: Row, where: Row) =>
   Object.entries(where).every(([key, value]) =>
     value instanceof FindOperator
-      ? (value.value as unknown[]).includes(row[key])
+      ? value.type === 'moreThan'
+        ? (row[key] as Date) > value.value
+        : (value.value as unknown[]).includes(row[key])
       : row[key] === value,
   );
 
@@ -54,9 +57,11 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
   let service: PaymentsService;
   let payments: Payment[];
   let orders: Order[];
+  let requestKeys: PaymentRequestKey[];
 
   const paymentRepository = memoryRepository<Payment>(() => payments);
   const orderRepository = memoryRepository<Order>(() => orders);
+  const keyRepository = memoryRepository<PaymentRequestKey>(() => requestKeys);
   const userRepository = memoryRepository<User>(() => [
     { id: 'user-1', email: 'khach@brewlite.vn' } as User,
   ]);
@@ -74,7 +79,11 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
 
   const manager = {
     getRepository: (entity: unknown) =>
-      entity === Order ? orderRepository : paymentRepository,
+      entity === Order
+        ? orderRepository
+        : entity === PaymentRequestKey
+          ? keyRepository
+          : paymentRepository,
   };
 
   const orderWith = (
@@ -88,7 +97,8 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
       status,
       total: 75000,
       items: [{ qty: 2 }],
-      createdAt: new Date('2026-10-30T08:00:00Z'),
+      createdAt: new Date(Date.now() - 60_000),
+      expiresAt: new Date(Date.now() + 15 * 60_000),
     }) as unknown as Order;
 
   const create = (key = 'key-1', method: 'WALLET' | 'CARD' = 'WALLET') =>
@@ -97,6 +107,7 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
   beforeEach(async () => {
     payments = [];
     orders = [orderWith('PENDING')];
+    requestKeys = [];
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -108,13 +119,22 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
         {
           provide: DataSource,
           useValue: {
+            getRepository: manager.getRepository,
             transaction: jest.fn(
               async (work: (m: typeof manager) => Promise<unknown>) =>
                 work(manager),
             ),
           },
         },
-        { provide: OrdersService, useValue: { updateOrderStatus } },
+        {
+          provide: OrdersService,
+          useValue: {
+            updateOrderStatus,
+            expireIfNeeded: async () => false,
+            ensureInventoryReservation: async () => undefined,
+            databaseNow: async () => new Date(),
+          },
+        },
         {
           provide: ConfigService,
           useValue: {
@@ -131,11 +151,12 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
 
   describe('POST /payments (createPayment)', () => {
     it('tạo phiên PENDING, số tiền lấy từ đơn hàng, đơn vẫn PENDING', async () => {
+      const originalDeadline = new Date(orders[0].expiresAt);
       const res = await create();
       expect(res.status).toBe('PENDING');
       expect(res.amount).toBe(75000);
       expect(res.orderStatus).toBe('PENDING');
-      expect(res.expiresAt).toEqual(new Date('2026-10-30T08:15:00Z'));
+      expect(res.expiresAt).toEqual(originalDeadline);
       expect(updateOrderStatus).not.toHaveBeenCalled();
     });
 
@@ -290,7 +311,8 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
       await service.review('admin-1', paymentId, 'CONFIRM');
       await expect(
         service.review('admin-2', paymentId, 'REJECT'),
-      ).rejects.toThrow(BadRequestException);
+      ).resolves.toMatchObject({ status: 'SUCCESS', orderStatus: 'PAID' });
+      expect(payments[0].reviewedBy).toBe('admin-1');
       expect(orders[0].status).toBe('PAID');
     });
 
@@ -299,7 +321,7 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
       orders[0].status = 'CANCELLED';
       await expect(
         service.review('admin-1', paymentId, 'CONFIRM'),
-      ).rejects.toThrow('Không thể chuyển đơn hàng từ CANCELLED sang PAID');
+      ).rejects.toThrow('Đơn đã hết hạn hoặc bị hủy');
     });
 
     it('404 khi phiên không tồn tại', async () => {

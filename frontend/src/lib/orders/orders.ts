@@ -1,25 +1,33 @@
-import { getStoredToken } from '@/lib/auth';
-import type { CartItem } from '@/store/useCart';
+import { getStoredToken } from "@/lib/auth";
+import type { CartItem } from "@/store/useCart";
 
 export interface CreateOrderResponse {
   message: string;
   orderId: string;
   total: number;
-  status: 'PENDING';
+  subtotal: number;
+  discount: number;
+  voucherCode: string | null;
+  voucherTitle: string | null;
+  status: "PENDING";
   createdAt: string;
-  expiresAt?: string | null;
+  expiresAt: string;
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001';
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-export async function submitOrderApi(items: CartItem[]): Promise<CreateOrderResponse> {
+export async function submitOrderApi(
+  items: CartItem[],
+  voucherCode?: string,
+): Promise<CreateOrderResponse> {
   const token = getStoredToken();
   if (!token) {
-    throw new Error('Bạn chưa đăng nhập. Vui lòng đăng nhập để đặt hàng.');
+    throw new Error("Bạn chưa đăng nhập. Vui lòng đăng nhập để đặt hàng.");
   }
 
   // Only send what the backend needs; the backend recalculates prices
   const orderPayload = {
+    ...(voucherCode ? { voucherCode } : {}),
     items: items.map((item) => ({
       productId: item.productId,
       size: item.size,
@@ -29,10 +37,10 @@ export async function submitOrderApi(items: CartItem[]): Promise<CreateOrderResp
   };
 
   const res = await fetch(`${BASE_URL}/orders`, {
-    method: 'POST',
+    method: "POST",
     headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
+      "Content-Type": "application/json",
+      Accept: "application/json",
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(orderPayload),
@@ -42,9 +50,11 @@ export async function submitOrderApi(items: CartItem[]): Promise<CreateOrderResp
 
   if (!res.ok) {
     if (res.status === 401) {
-      throw new Error('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.");
     }
-    const message = Array.isArray(data.message) ? data.message.join(', ') : data.message;
+    const message = Array.isArray(data.message)
+      ? data.message.join(", ")
+      : data.message;
     throw new Error(message || `Đặt hàng thất bại (mã lỗi ${res.status})`);
   }
 

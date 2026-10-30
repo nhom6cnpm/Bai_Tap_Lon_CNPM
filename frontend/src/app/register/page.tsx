@@ -1,19 +1,20 @@
-'use client';
+"use client";
 
-import { Suspense, useState, FormEvent } from 'react';
-import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { useAuth } from '@/hooks/useAuth';
+import { Suspense, useState, FormEvent } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@/hooks/useAuth";
+import { safeRedirect } from "@/lib/safeRedirect";
 
 function RegisterForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirectUrl = searchParams.get('redirect') || '/menu';
+  const redirectUrl = safeRedirect(searchParams.get("redirect"));
 
   const { register } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -22,12 +23,12 @@ function RegisterForm() {
     setError(null);
 
     if (password.length < 6) {
-      setError('Mật khẩu phải dài ít nhất 6 ký tự.');
+      setError("Mật khẩu phải dài ít nhất 6 ký tự.");
       return;
     }
 
     if (password !== confirmPassword) {
-      setError('Mật khẩu xác nhận không khớp.');
+      setError("Mật khẩu xác nhận không khớp.");
       return;
     }
 
@@ -40,7 +41,7 @@ function RegisterForm() {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('Có lỗi xảy ra khi đăng ký. Vui lòng thử lại.');
+        setError("Có lỗi xảy ra khi đăng ký. Vui lòng thử lại.");
       }
     } finally {
       setLoading(false);
@@ -64,7 +65,10 @@ function RegisterForm() {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="reg-email" className="block text-sm font-medium text-stone-700">
+          <label
+            htmlFor="reg-email"
+            className="block text-sm font-medium text-stone-700"
+          >
             Email
           </label>
           <input
@@ -80,7 +84,10 @@ function RegisterForm() {
         </div>
 
         <div>
-          <label htmlFor="reg-password" className="block text-sm font-medium text-stone-700">
+          <label
+            htmlFor="reg-password"
+            className="block text-sm font-medium text-stone-700"
+          >
             Mật khẩu (tối thiểu 6 ký tự)
           </label>
           <input
@@ -96,7 +103,10 @@ function RegisterForm() {
         </div>
 
         <div>
-          <label htmlFor="reg-confirm" className="block text-sm font-medium text-stone-700">
+          <label
+            htmlFor="reg-confirm"
+            className="block text-sm font-medium text-stone-700"
+          >
             Xác nhận mật khẩu
           </label>
           <input
@@ -116,14 +126,14 @@ function RegisterForm() {
           disabled={loading}
           className="w-full rounded-xl bg-amber-800 py-2.5 text-center text-sm font-medium text-white transition hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {loading ? 'Đang tạo tài khoản...' : 'Đăng ký'}
+          {loading ? "Đang tạo tài khoản..." : "Đăng ký"}
         </button>
       </form>
 
       <div className="mt-6 text-center text-sm text-stone-600">
-        Đã có tài khoản?{' '}
+        Đã có tài khoản?{" "}
         <Link
-          href={`/login${redirectUrl !== '/menu' ? `?redirect=${encodeURIComponent(redirectUrl)}` : ''}`}
+          href={`/login${redirectUrl !== "/menu" ? `?redirect=${encodeURIComponent(redirectUrl)}` : ""}`}
           className="font-semibold text-amber-800 hover:underline"
         >
           Đăng nhập ngay
@@ -136,7 +146,9 @@ function RegisterForm() {
 export default function RegisterPage() {
   return (
     <div className="flex min-h-[calc(100vh-140px)] items-center justify-center px-4 py-12">
-      <Suspense fallback={<div className="text-center text-stone-500">Đang tải...</div>}>
+      <Suspense
+        fallback={<div className="text-center text-stone-500">Đang tải...</div>}
+      >
         <RegisterForm />
       </Suspense>
     </div>

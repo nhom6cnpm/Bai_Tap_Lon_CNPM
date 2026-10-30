@@ -1,12 +1,138 @@
 {
 	"info": {
-		"name": "BrewLite API - Task 2, 6, 7 & 8",
+		"name": "BrewLite API - Task 2, 6, 7, 8, 9 & 10 inventory",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
+	"variable": [
+		{
+			"key": "voucherCode",
+			"value": "<MA_NHOM_DA_CHOT>"
+		},
+		{
+			"key": "task10dOrderId",
+			"value": "<ORDER_ID>"
+		},
+		{
+			"key": "task10dToken",
+			"value": "<YOUR_JWT_TOKEN>"
+		},
+		{
+			"key": "task10dKey",
+			"value": "task10d-review-001"
+		}
+	],
 	"item": [
+		{
+			"name": "Task 10e - Vouchers and account usage limits",
+			"item": [
+				{
+					"name": "Quote cart and list public vouchers (does not reserve stock)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "http://localhost:3001/vouchers/quote",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }]\n}"
+						}
+					}
+				},
+				{
+					"name": "Quote own remaining uses (JWT, no reservation)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{task10dToken}}",
+								"type": "text"
+							}
+						],
+						"url": "http://localhost:3001/vouchers/quote",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }]\n}"
+						},
+						"description": "Use the customer token in task10dToken. Returns usage.maxUsesPerUser/reservedUses/usedUses/availableUses. Fully used vouchers are hidden; reserved-only exhaustion is visible with an unavailableReason. Quoting does not reserve a use. Invalid/expired supplied JWT returns 401; omitting Authorization gives guest pricing with usage=null."
+					}
+				},
+				{
+					"name": "Validate an existing voucher and quote discounted total",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"url": "http://localhost:3001/vouchers/quote",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}"
+						}
+					}
+				},
+				{
+					"name": "Create order with a voucher snapshot (requires a valid active code)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{task10dToken}}"
+							}
+						],
+						"url": "http://localhost:3001/orders",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}"
+						},
+						"description": "Creates a policy-version-1 order and reserves one voucher use in the same transaction as stock reservation. Staff-confirmed PAID consumes the reserved use and awards floor(total/10000) points. PAYMENT_FAILED keeps it reserved; cancellation/expiry releases it. Exhausted/held account limits return 409 and roll back order and inventory. Existing orders retain their price snapshot."
+					}
+				}
+			]
+		},
 		{
 			"name": "Products",
 			"item": [
+				{
+					"name": "Selection Availability (Size and Toppings)",
+					"request": {
+						"method": "GET",
+						"url": "http://localhost:3001/products/1/availability?size=L&toppingIds=cream,pearls"
+					}
+				},
+				{
+					"name": "Cart Availability (Shared Ingredients)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"items\": [\n    { \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 3 },\n    { \"productId\": \"2\", \"size\": \"L\", \"toppingIds\": [\"cream\"], \"qty\": 1 }\n  ]\n}"
+						},
+						"url": "http://localhost:3001/products/availability"
+					}
+				},
 				{
 					"name": "Get All Products",
 					"request": {
@@ -103,6 +229,48 @@
 			"name": "Orders",
 			"item": [
 				{
+					"name": "My Order History (JWT)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/orders/me",
+						"description": "Task 9: own orders, newest first; [] for no orders, 401 for invalid/deleted-user session. Includes item display/price snapshots, status, cancellation reason, expiresAt, serverTime, canPay and actual payment method. Cache-Control: private, no-store."
+					}
+				},
+				{
+					"name": "Own Order Detail (JWT)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/orders/<ORDER_ID>",
+						"description": "Task 9: the same DTO as one history entry. Unknown and another user's order both return 404. Confirmation UI must require PAID; canPay is true only for PENDING/PAYMENT_FAILED before the original backend expiry."
+					}
+				},
+				{
+					"name": "Cancel Own Order (Repeat Does Not Refund Twice)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/orders/<ORDER_ID>/cancel",
+						"description": "Task 10c: cancel an owned PENDING/PAYMENT_FAILED/PAID order. Returns CANCELLED, cancelReason, cancelledAt and expiresAt. Repeat requests do not refund stock twice."
+					}
+				},
+				{
 					"name": "Create Order",
 					"request": {
 						"method": "POST",
@@ -166,6 +334,58 @@
 		{
 			"name": "Payments",
 			"item": [
+				{
+					"name": "Create or Replay Payment (Task 10d - Stable Key)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{task10dToken}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{task10dKey}}"
+							}
+						],
+						"url": "http://localhost:3001/payments",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{task10dOrderId}}\",\n  \"method\": \"WALLET\"\n}"
+						},
+						"description": "Set task10dOrderId, task10dToken and task10dKey in collection variables. Send twice with the same variables: both return the same paymentId, including after payment is processed. A replay does not extend expiry or authorize another charge. After a failed attempt, use a new key to deliberately start a new attempt on the same unexpired order."
+					}
+				},
+				{
+					"name": "Replay with Changed Method (Task 10d - 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{task10dToken}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{task10dKey}}"
+							}
+						],
+						"url": "http://localhost:3001/payments",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{task10dOrderId}}\",\n  \"method\": \"CARD\"\n}"
+						},
+						"description": "Run after the WALLET stable-key request with the same collection variables. Expect 400 because this key already identifies another method; no extra Payment or stock mutation."
+					}
+				},
 				{
 					"name": "Create Payment",
 					"request": {

@@ -15,6 +15,11 @@ import { Ingredient } from './inventory/ingredient.entity';
 import { RecipeItem } from './inventory/recipe-item.entity';
 import { ToppingRecipe } from './inventory/topping-recipe.entity';
 import { Payment } from './payments/entities/payment.entity';
+import { OrderInventoryReservation } from './orders/order-inventory-reservation.entity';
+import { Voucher } from './vouchers/voucher.entity';
+import { PaymentRequestKey } from './payments/entities/payment-request-key.entity';
+import { VoucherUserQuota } from './vouchers/voucher-user-quota.entity';
+import { VoucherUsage } from './vouchers/voucher-usage.entity';
 
 @Module({
   imports: [
@@ -36,6 +41,11 @@ import { Payment } from './payments/entities/payment.entity';
           RecipeItem,
           ToppingRecipe,
           Payment,
+          OrderInventoryReservation,
+          Voucher,
+          PaymentRequestKey,
+          VoucherUserQuota,
+          VoucherUsage,
         ],
         // Migrations run automatically on app startup (also handles seed order)
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
