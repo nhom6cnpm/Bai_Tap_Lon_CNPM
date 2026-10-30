@@ -7,7 +7,6 @@ import { ProductsModule } from './products/products.module';
 import { AuthModule } from './auth/auth.module';
 import { OrdersModule } from './orders/orders.module';
 import { PaymentsModule } from './payments/payments.module';
-import { MockGatewayModule } from './mock-gateway/mock-gateway.module';
 import { Product } from './products/product.entity';
 import { User } from './auth/user.entity';
 import { Order } from './orders/order.entity';
@@ -49,7 +48,6 @@ import { Payment } from './payments/entities/payment.entity';
     AuthModule,
     OrdersModule,
     PaymentsModule,
-    MockGatewayModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -8,6 +8,7 @@ import { User } from './user.entity';
 describe('AuthService', () => {
   let service: AuthService;
   let mockUsers: User[] = [];
+  const jwtSign = jest.fn().mockReturnValue('mock_token');
 
   const mockUserRepository = {
     create: jest.fn().mockImplementation((dto) => ({
@@ -52,7 +53,7 @@ describe('AuthService', () => {
         {
           provide: JwtService,
           useValue: {
-            sign: jest.fn().mockReturnValue('mock_token'),
+            sign: jwtSign,
           },
         },
       ],
@@ -75,6 +76,7 @@ describe('AuthService', () => {
       expect(result).toHaveProperty('id');
       expect(result.email).toBe('test@brewlite.com');
       expect(result.loyaltyPoints).toBe(0);
+      expect(result.role).toBe('CUSTOMER');
       expect((result as any).password).toBeUndefined();
       expect((result as any).passwordHash).toBeUndefined();
     });
@@ -111,6 +113,19 @@ describe('AuthService', () => {
       expect(res).toHaveProperty('access_token', 'mock_token');
       expect(res.user.email).toBe('user@brewlite.com');
       expect(res.user.loyaltyPoints).toBe(0);
+      expect(res.user.role).toBe('CUSTOMER');
+    });
+
+    it('puts the role into the JWT so RolesGuard can check it', async () => {
+      mockUsers[0].role = 'ADMIN';
+      const res = await service.login({
+        email: 'user@brewlite.com',
+        password: 'correctPassword',
+      });
+      expect(res.user.role).toBe('ADMIN');
+      expect(jwtSign).toHaveBeenCalledWith(
+        expect.objectContaining({ role: 'ADMIN' }),
+      );
     });
 
     it('should throw UnauthorizedException (401) for incorrect password', async () => {

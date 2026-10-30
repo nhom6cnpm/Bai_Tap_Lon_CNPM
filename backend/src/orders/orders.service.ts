@@ -1,4 +1,5 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -7,6 +8,7 @@ import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
 import { calculateUnitPrice } from './pricing';
 import { assertTransition, type OrderStatus } from './order-status';
+import { paymentDeadline, parsePaymentTimeoutMinutes } from './payment-timeout';
 
 @Injectable()
 export class OrdersService {
@@ -17,6 +19,7 @@ export class OrdersService {
     private readonly orderItemRepository: Repository<OrderItem>,
     private readonly dataSource: DataSource,
     private readonly productsService: ProductsService,
+    private readonly configService: ConfigService,
   ) {}
 
   async createOrder(userId: string, createOrderDto: CreateOrderDto) {
@@ -81,6 +84,12 @@ export class OrdersService {
       total: savedOrder.total,
       status: savedOrder.status,
       createdAt: savedOrder.createdAt,
+      expiresAt: paymentDeadline(
+        savedOrder.createdAt,
+        parsePaymentTimeoutMinutes(
+          this.configService.get<string>('ORDER_PAYMENT_TIMEOUT_MINUTES'),
+        ),
+      ),
     };
   }
 

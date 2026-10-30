@@ -16,18 +16,9 @@ export interface PaymentAttempt {
   paymentId?: string;
 }
 
-export interface PaymentSession {
-  paymentId: string;
-  orderId: string;
-  method: PaymentMethod;
-  amount: number;
-  startedAt: number;
-}
-
 const checkoutKey = (orderId: string) => `brewlite-checkout:${orderId}`;
 const activeCheckoutKey = 'brewlite-active-checkout';
 const attemptKey = (orderId: string, method: PaymentMethod) => `brewlite-payment-attempt:${orderId}:${method}`;
-const sessionKey = (paymentId: string) => `brewlite-payment-session:${paymentId}`;
 
 function readStored<T>(key: string): T | null {
   if (typeof window === 'undefined') return null;
@@ -78,14 +69,4 @@ export function saveAttempt(attempt: PaymentAttempt): void {
 
 export function removeAttempt(orderId: string, method: PaymentMethod): void {
   if (typeof window !== 'undefined') localStorage.removeItem(attemptKey(orderId, method));
-}
-
-export function savePaymentSession(session: PaymentSession): void {
-  writeStored(sessionKey(session.paymentId), session);
-}
-
-export function getPaymentSession(paymentId: string): PaymentSession | null {
-  const session = readStored<PaymentSession>(sessionKey(paymentId));
-  return session?.paymentId === paymentId && typeof session.orderId === 'string' &&
-    (session.method === 'WALLET' || session.method === 'CARD') && Number.isFinite(session.startedAt) ? session : null;
 }
