@@ -1,10 +1,13 @@
 export const TOKEN_KEY = 'brewlite_token';
 export const USER_KEY = 'brewlite_user';
 
+export type UserRole = 'CUSTOMER' | 'ADMIN';
+
 export interface UserProfile {
   id: string;
   email: string;
   loyaltyPoints: number;
+  role?: UserRole;
 }
 
 export interface AuthResponse {

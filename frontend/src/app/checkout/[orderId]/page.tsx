@@ -11,7 +11,6 @@ import {
   getAttempt,
   getCheckout,
   saveAttempt,
-  savePaymentSession,
   type CheckoutSnapshot,
 } from '@/lib/payments/storage';
 
@@ -76,13 +75,6 @@ export default function CheckoutPage() {
     try {
       const payment = await createPayment(orderId, method, idempotencyKey);
       saveAttempt({ orderId, method, idempotencyKey, paymentId: payment.paymentId });
-      savePaymentSession({
-        paymentId: payment.paymentId,
-        orderId,
-        method,
-        amount: snapshot.total,
-        startedAt: Date.now(),
-      });
       router.push(`/pay/${encodeURIComponent(payment.paymentId)}`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Không tạo được phiên thanh toán. Vui lòng thử lại.');
@@ -124,8 +116,8 @@ export default function CheckoutPage() {
             <legend className="font-semibold">Phương thức</legend>
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               {([
-                { id: 'WALLET', title: 'Ví điện tử', detail: 'Quét QR và xác nhận trên điện thoại' },
-                { id: 'CARD', title: 'Thẻ', detail: 'Dùng số thẻ giả để mô phỏng' },
+                { id: 'WALLET', title: 'Chuyển khoản / Ví điện tử', detail: 'Chuyển tiền với nội dung là mã đơn, nhân viên xác nhận khi nhận được tiền' },
+                { id: 'CARD', title: 'Thẻ tại quầy', detail: 'Đưa mã QR đơn hàng cho nhân viên và quẹt thẻ tại quầy' },
               ] as const).map((option) => (
                 <label key={option.id} className={`cursor-pointer rounded-2xl border p-4 focus-within:outline-2 focus-within:outline-amber-800 ${method === option.id ? 'border-amber-800 bg-amber-50' : 'border-stone-200'}`}>
                   <input type="radio" name="payment-method" value={option.id} checked={method === option.id}
@@ -141,7 +133,7 @@ export default function CheckoutPage() {
         {error && <p role="alert" className="mt-5 rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
         <button type="button" onClick={() => void handlePayment()} disabled={pending || expired}
           className="mt-7 w-full rounded-xl bg-amber-800 px-5 py-3 font-bold text-white hover:bg-amber-900 disabled:cursor-not-allowed disabled:opacity-50">
-          {pending ? 'Đang tạo phiên thanh toán…' : `Thanh toán · ${formatPrice(snapshot.total)}`}
+          {pending ? 'Đang tạo phiên thanh toán…' : `Tiếp tục · ${formatPrice(snapshot.total)}`}
         </button>
       </div>
     </section>

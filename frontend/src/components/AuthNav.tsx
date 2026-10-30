@@ -10,6 +10,14 @@ export default function AuthNav() {
   if (isAuthenticated && user) {
     return (
       <div className="flex items-center gap-2 sm:gap-3">
+        {user.role === 'ADMIN' && (
+          <Link
+            href="/admin/payments"
+            className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900 transition hover:bg-sky-200"
+          >
+            Quản trị
+          </Link>
+        )}
         <div className="flex flex-col items-end text-xs">
           <span className="max-w-[130px] truncate font-medium text-stone-800 sm:max-w-[180px]">
             {user.email}

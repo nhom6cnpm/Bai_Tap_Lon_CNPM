@@ -48,17 +48,26 @@ Kiểm tra:
 - **API danh sách sản phẩm**: http://localhost:3001/products
 - **PostgreSQL**: `localhost:5432` (user/pass/db: `brewlite`)
 
-### Quét QR thanh toán bằng điện thoại khi chạy Docker
+### Thanh toán và trang admin (nhân viên xác nhận)
 
-Điện thoại và máy tính phải cùng mạng Wi-Fi. Ở **thư mục gốc của repo** (cùng cấp với `docker-compose.yml`), tạo file `.env` và điền địa chỉ IPv4 của máy tính:
+Thanh toán **không** để khách tự xác nhận. Luồng:
+
+1. Khách đặt đơn → đơn `PENDING`, chọn **Chuyển khoản / Ví** hoặc **Thẻ tại quầy**.
+2. Màn hình thanh toán hiện **mã QR chứa mã đơn**. Khách chuyển tiền với nội dung là mã đơn, rồi bấm **"Tôi đã chuyển tiền"**. Lúc này đơn **vẫn là `PENDING`**, phiên thanh toán chuyển sang `CUSTOMER_REPORTED`.
+3. Nhân viên mở **http://localhost:3000/admin/payments**. Trang tự làm mới mỗi 4 giây, có thông báo, âm báo và số khách đang chờ trên tab.
+4. Nhân viên bấm **Xác nhận đã nhận tiền** → đơn `PAID`, hoặc **Từ chối** → đơn `PAYMENT_FAILED` (khách có thể thử lại). Màn hình của khách tự cập nhật.
+
+Tài khoản admin được tạo sẵn khi backend khởi động, lấy từ biến môi trường `ADMIN_EMAIL` / `ADMIN_PASSWORD` (mặc định `admin@brewlite.vn` / `admin123`). Khi nộp hoặc triển khai thật, hãy đổi mật khẩu này trong file `.env`. Tài khoản khách thường gọi API `/admin/*` sẽ nhận lỗi 403.
+
+Để nhân viên quét QR của khách bằng điện thoại (cùng mạng Wi-Fi), tạo file `.env` ở **thư mục gốc của repo** và điền IPv4 của máy tính:
 
 ```env
 NEXT_PUBLIC_APP_URL=http://<IP-máy-tính>:3000
 ```
 
-Trên Windows, chạy `ipconfig` để xem IPv4 của Wi-Fi. Trên macOS, chạy `ipconfig getifaddr en0` (thay `en0` bằng tên giao diện Wi-Fi nếu máy dùng tên khác). Sau khi đặt biến này hoặc khi địa chỉ IP thay đổi, chạy `docker compose up -d --build frontend` để build lại frontend, rồi tải lại trang thanh toán. QR sẽ mở trang xác nhận BrewLite Pay giả lập trên điện thoại; đây không phải giao dịch ngân hàng thật. File `.env` được Git bỏ qua.
+Trên Windows, chạy `ipconfig` để xem IPv4. Trên macOS, chạy `ipconfig getifaddr en0`. Sau đó chạy `docker compose up -d --build frontend`. File `.env` được Git bỏ qua.
 
-Giao diện mặc định cho thanh toán trong 5 phút. Khi cần đổi thời hạn cho bản Docker, thêm `ORDER_PAYMENT_TIMEOUT_MINUTES=5` (hoặc số phút mong muốn) vào file `.env` ở thư mục gốc rồi build lại. Compose truyền cùng một giá trị cho backend và frontend; backend sẽ dùng giá trị này khi chức năng tự hủy đơn của Task 10c được triển khai.
+Mỗi đơn có **15 phút** để thanh toán và chờ nhân viên xác nhận. Để đổi, thêm `ORDER_PAYMENT_TIMEOUT_MINUTES=<số phút>` vào `.env` ở thư mục gốc rồi build lại. Compose truyền cùng giá trị này cho backend và frontend. Việc tự hủy đơn quá hạn thuộc Task 10c.
 
 Dừng và dọn dẹp container:
 ```bash

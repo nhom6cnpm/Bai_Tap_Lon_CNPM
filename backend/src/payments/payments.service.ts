@@ -6,44 +6,103 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, Repository } from 'typeorm';
-import * as crypto from 'crypto';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  QueryFailedError,
+  Repository,
+  type FindOptionsWhere,
+} from 'typeorm';
 import { OrdersService } from '../orders/orders.service';
+import { Order } from '../orders/order.entity';
 import type { OrderStatus } from '../orders/order-status';
+import {
+  paymentDeadline,
+  parsePaymentTimeoutMinutes,
+} from '../orders/payment-timeout';
+import { User } from '../auth/user.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
-import { PaymentCallbackDto, PaymentResult } from './dto/payment-callback.dto';
-import { Payment, type PaymentStatus } from './entities/payment.entity';
+import type { ListAdminPaymentsDto } from './dto/list-admin-payments.dto';
+import {
+  ACTIVE_PAYMENT_STATUSES,
+  Payment,
+  type PaymentStatus,
+} from './entities/payment.entity';
 
 const UNIQUE_VIOLATION = '23505';
 
+export type PaymentDecision = 'CONFIRM' | 'REJECT';
+
+/**
+ * Task 8 — thanh toán do nhân viên xác nhận (yêu cầu 30/10):
+ * khách chọn phương thức → chuyển tiền → bấm "Tôi đã chuyển tiền" (chỉ báo) →
+ * ADMIN xác nhận (đơn PAID) hoặc từ chối (đơn PAYMENT_FAILED).
+ * Every order status change goes through OrdersService.updateOrderStatus, so the
+ * state machine (assertTransition) still guards every arrow.
+ */
 @Injectable()
 export class PaymentsService {
-  private readonly gatewaySecret: string;
+  private readonly timeoutMinutes: number;
 
   constructor(
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly ordersService: OrdersService,
     private readonly configService: ConfigService,
     private readonly dataSource: DataSource,
   ) {
-    const secret = this.configService.get<string>('PAYMENT_GATEWAY_SECRET');
-    if (!secret) {
-      throw new Error(
-        'PAYMENT_GATEWAY_SECRET is required. Please set it in your .env file.',
-      );
-    }
-    this.gatewaySecret = secret;
+    this.timeoutMinutes = parsePaymentTimeoutMinutes(
+      this.configService.get<string>('ORDER_PAYMENT_TIMEOUT_MINUTES'),
+    );
   }
 
-  private toSessionResponse(payment: Payment) {
+  private toView(payment: Payment, order?: Order | null) {
     return {
       paymentId: payment.id,
-      gatewayUrl: payment.gatewayUrl,
+      orderId: payment.orderId,
+      amount: payment.amount,
+      method: payment.method,
       status: payment.status,
+      reportedAt: payment.reportedAt ?? null,
+      reviewNote: payment.reviewNote ?? null,
+      createdAt: payment.createdAt,
+      orderStatus: order?.status ?? null,
+      expiresAt: order
+        ? paymentDeadline(order.createdAt, this.timeoutMinutes)
+        : null,
     };
   }
 
+  private async lockOrder(manager: EntityManager, orderId: string) {
+    const order = await manager.getRepository(Order).findOne({
+      where: { id: orderId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!order) {
+      throw new NotFoundException(`Không tìm thấy đơn hàng ${orderId}`);
+    }
+    return order;
+  }
+
+  private async lockPayment(manager: EntityManager, paymentId: string) {
+    const payment = await manager.getRepository(Payment).findOne({
+      where: { id: paymentId },
+      lock: { mode: 'pessimistic_write' },
+    });
+    if (!payment) {
+      throw new NotFoundException(
+        `Không tìm thấy phiên thanh toán ${paymentId}`,
+      );
+    }
+    return payment;
+  }
+
+  /** POST /payments — khách chọn phương thức (Ví = chuyển khoản QR, Thẻ = quẹt tại quầy). */
   async createPayment(
     userId: string,
     dto: CreatePaymentDto,
@@ -53,63 +112,84 @@ export class PaymentsService {
       throw new BadRequestException('Thiếu header Idempotency-Key');
     }
 
-    const order = await this.ordersService.findById(dto.orderId);
-    if (!order) {
-      throw new NotFoundException(`Không tìm thấy đơn hàng ${dto.orderId}`);
-    }
-
-    if (order.userId !== userId) {
-      throw new ForbiddenException(
-        'Bạn không có quyền thanh toán đơn hàng này',
-      );
-    }
-
-    if (order.status === 'PAID') {
-      throw new BadRequestException('Đơn hàng này đã được thanh toán');
-    }
-    if (order.status === 'CANCELLED') {
-      throw new BadRequestException('Đơn hàng đã hết hạn hoặc đã bị hủy');
-    }
-
-    const existingPayment = await this.paymentRepository.findOneBy({
-      idempotencyKey,
-      orderId: dto.orderId,
-    });
-    if (existingPayment) {
-      return this.toSessionResponse(existingPayment);
-    }
-
-    const paymentId =
-      'PAY-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7);
-    const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
-
     try {
-      const saved = await this.dataSource.transaction(async (manager) => {
-        // Retry: PAYMENT_FAILED -> PENDING first (đề mục 9.1, "thử lại")
-        if (order.status === 'PAYMENT_FAILED') {
-          await this.ordersService.updateOrderStatus(
-            order.id,
-            'PENDING',
-            manager,
+      return await this.dataSource.transaction(async (manager) => {
+        // Row lock on the order: two payment requests for the same order run
+        // one after the other, so an order never has two active payments
+        const order = await this.lockOrder(manager, dto.orderId);
+        if (order.userId !== userId) {
+          throw new ForbiddenException(
+            'Bạn không có quyền thanh toán đơn hàng này',
           );
         }
-        const payment = manager.getRepository(Payment).create({
-          id: paymentId,
+
+        const repository = manager.getRepository(Payment);
+        const sameKey = await repository.findOneBy({ idempotencyKey });
+        if (sameKey) {
+          if (sameKey.orderId !== order.id) {
+            throw new BadRequestException(
+              'Idempotency-Key đã được dùng cho đơn hàng khác',
+            );
+          }
+          return this.toView(sameKey, order);
+        }
+
+        if (order.status === 'CANCELLED') {
+          throw new BadRequestException('Đơn hàng đã hết hạn hoặc đã bị hủy');
+        }
+        if (order.status !== 'PENDING' && order.status !== 'PAYMENT_FAILED') {
+          throw new BadRequestException('Đơn hàng này đã được thanh toán');
+        }
+
+        // One active payment per order: reuse it instead of creating another
+        // row the staff would have to review twice
+        const active = await repository.findOne({
+          where: {
+            orderId: order.id,
+            status: In([...ACTIVE_PAYMENT_STATUSES]),
+          },
+        });
+        if (active) {
+          if (active.status === 'PENDING' && active.method !== dto.method) {
+            active.method = dto.method;
+            await repository.save(active);
+          }
+          return this.toView(active, order);
+        }
+
+        // Retry: PAYMENT_FAILED → PENDING first (đề mục 9.1, "thử lại")
+        if (order.status === 'PAYMENT_FAILED') {
+          order.status = (
+            await this.ordersService.updateOrderStatus(
+              order.id,
+              'PENDING',
+              manager,
+            )
+          ).status;
+        }
+
+        const payment = repository.create({
+          id:
+            'PAY-' +
+            Date.now() +
+            '-' +
+            Math.random().toString(36).substring(2, 7),
           orderId: order.id,
           userId,
           idempotencyKey,
           amount: order.total, // never trust an amount from the client
           method: dto.method,
           status: 'PENDING',
-          gatewayUrl: `${frontendUrl}/mock-gateway/${paymentId}`,
+          reportedAt: null,
+          reviewedAt: null,
+          reviewedBy: null,
+          reviewNote: null,
         });
-        return manager.save(payment);
+        return this.toView(await repository.save(payment), order);
       });
-      return this.toSessionResponse(saved);
     } catch (error) {
-      // Same Idempotency-Key sent twice at the same time: the UNIQUE constraint
-      // rejects the second insert, so return the session created by the first one
+      // Same Idempotency-Key sent twice at the same time for different orders:
+      // the UNIQUE constraint rejects the second insert
       if (
         error instanceof QueryFailedError &&
         (error.driverError as { code?: string })?.code === UNIQUE_VIOLATION
@@ -118,7 +198,10 @@ export class PaymentsService {
           idempotencyKey,
         });
         if (winner && winner.orderId === dto.orderId) {
-          return this.toSessionResponse(winner);
+          const order = await this.orderRepository.findOneBy({
+            id: winner.orderId,
+          });
+          return this.toView(winner, order);
         }
         throw new BadRequestException(
           'Idempotency-Key đã được dùng cho đơn hàng khác',
@@ -128,114 +211,157 @@ export class PaymentsService {
     }
   }
 
-  async getPaymentById(paymentId: string, userId?: string) {
+  /**
+   * POST /payments/:id/report-paid — khách bấm "Tôi đã chuyển tiền".
+   * Only flags the payment for staff; the order stays PENDING.
+   */
+  async reportPaid(userId: string, paymentId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const payment = await this.lockPayment(manager, paymentId);
+      if (payment.userId !== userId) {
+        throw new ForbiddenException(
+          'Bạn không có quyền với phiên thanh toán này',
+        );
+      }
+      const order = await manager
+        .getRepository(Order)
+        .findOneBy({ id: payment.orderId });
+
+      // Pressing the button twice is harmless
+      if (payment.status === 'CUSTOMER_REPORTED') {
+        return this.toView(payment, order);
+      }
+      if (payment.status !== 'PENDING') {
+        throw new BadRequestException(
+          'Phiên thanh toán này đã được nhân viên xử lý',
+        );
+      }
+      if (order?.status !== 'PENDING') {
+        throw new BadRequestException('Đơn hàng đã hết hạn hoặc đã bị hủy');
+      }
+
+      payment.status = 'CUSTOMER_REPORTED';
+      payment.reportedAt = new Date();
+      return this.toView(
+        await manager.getRepository(Payment).save(payment),
+        order,
+      );
+    });
+  }
+
+  /** GET /payments/:id — màn hình khách tự hỏi lại trạng thái (polling). */
+  async getPaymentById(paymentId: string, userId: string) {
     const payment = await this.paymentRepository.findOneBy({ id: paymentId });
     if (!payment) {
       throw new NotFoundException(
         `Không tìm thấy phiên thanh toán ${paymentId}`,
       );
     }
-
-    if (userId && payment.userId !== userId) {
+    if (payment.userId !== userId) {
       throw new ForbiddenException(
         'Bạn không có quyền xem phiên thanh toán này',
       );
     }
-
-    return {
-      paymentId: payment.id,
-      orderId: payment.orderId,
-      status: payment.status,
-      amount: payment.amount,
-      method: payment.method,
-      gatewayUrl: payment.gatewayUrl,
-    };
+    const order = await this.orderRepository.findOneBy({
+      id: payment.orderId,
+    });
+    return this.toView(payment, order);
   }
 
-  async getPaymentForGateway(paymentId: string) {
-    const payment = await this.paymentRepository.findOneBy({ id: paymentId });
-    if (!payment) {
-      throw new NotFoundException(
-        `Không tìm thấy phiên thanh toán ${paymentId}`,
+  /** GET /admin/payments — danh sách cho nhân viên (trang admin polling vài giây/lần). */
+  async listForAdmin(query: ListAdminPaymentsDto) {
+    const filter = query.status ?? 'ACTIVE';
+    const where: FindOptionsWhere<Payment> = {};
+    if (filter === 'ACTIVE') {
+      where.status = In([...ACTIVE_PAYMENT_STATUSES]);
+    } else if (filter !== 'ALL') {
+      where.status = filter;
+    }
+    if (query.orderId?.trim()) where.orderId = query.orderId.trim();
+
+    const payments = await this.paymentRepository.find({
+      where,
+      order: { createdAt: filter === 'ACTIVE' ? 'ASC' : 'DESC' },
+      take: 100,
+    });
+
+    const orderIds = [...new Set(payments.map((p) => p.orderId))];
+    const userIds = [...new Set(payments.map((p) => p.userId))];
+    const [orders, users] = await Promise.all([
+      orderIds.length
+        ? this.orderRepository.find({
+            where: { id: In(orderIds) },
+            relations: { items: true },
+          })
+        : Promise.resolve([] as Order[]),
+      userIds.length
+        ? this.userRepository.find({
+            where: { id: In(userIds) },
+            select: { id: true, email: true },
+          })
+        : Promise.resolve([] as User[]),
+    ]);
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const emailById = new Map(users.map((u) => [u.id, u.email]));
+
+    const rows = payments.map((payment) => {
+      const order = orderById.get(payment.orderId);
+      return {
+        ...this.toView(payment, order),
+        customerEmail: emailById.get(payment.userId) ?? null,
+        itemCount: order?.items?.reduce((sum, item) => sum + item.qty, 0) ?? 0,
+        reviewedAt: payment.reviewedAt ?? null,
+      };
+    });
+
+    // Customers who already reported a transfer come first
+    if (filter === 'ACTIVE') {
+      rows.sort(
+        (a, b) =>
+          Number(b.status === 'CUSTOMER_REPORTED') -
+          Number(a.status === 'CUSTOMER_REPORTED'),
       );
     }
-    return {
-      paymentId: payment.id,
-      orderId: payment.orderId,
-      amount: payment.amount,
-      method: payment.method,
-      status: payment.status,
-    };
+    return rows;
   }
 
-  generateSignature(paymentId: string, result: PaymentResult): string {
-    return crypto
-      .createHmac('sha256', this.gatewaySecret)
-      .update(`${paymentId}:${result}`)
-      .digest('hex');
-  }
-
-  verifySignature(
+  /**
+   * POST /admin/payments/:id/confirm | /reject — nhân viên quyết định.
+   * Payment and order change together in one transaction; assertTransition
+   * rejects e.g. confirming an order that was already CANCELLED.
+   */
+  async review(
+    adminId: string,
     paymentId: string,
-    result: PaymentResult,
-    signature: string,
-  ): boolean {
-    const expected = Buffer.from(this.generateSignature(paymentId, result));
-    const received = Buffer.from(signature);
-    // Constant-time comparison to avoid leaking the signature through timing
-    return (
-      expected.length === received.length &&
-      crypto.timingSafeEqual(expected, received)
-    );
-  }
+    decision: PaymentDecision,
+    note?: string,
+  ) {
+    const targetPayment: PaymentStatus =
+      decision === 'CONFIRM' ? 'SUCCESS' : 'FAILED';
+    const targetOrder: OrderStatus =
+      decision === 'CONFIRM' ? 'PAID' : 'PAYMENT_FAILED';
 
-  async processCallback(dto: PaymentCallbackDto) {
-    if (!this.verifySignature(dto.paymentId, dto.result, dto.signature)) {
-      throw new BadRequestException('Chữ ký không hợp lệ (Invalid signature)');
-    }
-
-    const targetOrderStatus: OrderStatus =
-      dto.result === 'SUCCESS' ? 'PAID' : 'PAYMENT_FAILED';
-    const targetPaymentStatus: PaymentStatus =
-      dto.result === 'SUCCESS' ? 'SUCCESS' : 'FAILED';
-
-    // Payment and order are updated together: either both change or neither does
     return this.dataSource.transaction(async (manager) => {
-      const repository = manager.getRepository(Payment);
-      // Row lock: a duplicate callback arriving at the same time waits here,
-      // then sees the payment is no longer PENDING
-      const payment = await repository.findOne({
-        where: { id: dto.paymentId },
-        lock: { mode: 'pessimistic_write' },
-      });
-      if (!payment) {
-        throw new NotFoundException(
-          `Không tìm thấy phiên thanh toán ${dto.paymentId}`,
+      // Row lock: two staff pressing at the same time are handled one by one
+      const payment = await this.lockPayment(manager, paymentId);
+      if (!ACTIVE_PAYMENT_STATUSES.includes(payment.status)) {
+        throw new BadRequestException(
+          `Phiên thanh toán đã được xử lý trước đó (${payment.status})`,
         );
       }
 
-      if (payment.status !== 'PENDING') {
-        return {
-          message: 'Callback đã được xử lý trước đó',
-          paymentId: payment.id,
-          status: payment.status,
-        };
-      }
-
-      payment.status = targetPaymentStatus;
-      await repository.save(payment);
-      await this.ordersService.updateOrderStatus(
+      const order = await this.ordersService.updateOrderStatus(
         payment.orderId,
-        targetOrderStatus,
+        targetOrder,
         manager,
       );
 
-      return {
-        message: 'Xử lý callback thành công',
-        paymentId: payment.id,
-        status: payment.status,
-        orderStatus: targetOrderStatus,
-      };
+      payment.status = targetPayment;
+      payment.reviewedAt = new Date();
+      payment.reviewedBy = adminId;
+      payment.reviewNote = note?.trim() || null;
+      const saved = await manager.getRepository(Payment).save(payment);
+      return this.toView(saved, order);
     });
   }
 }

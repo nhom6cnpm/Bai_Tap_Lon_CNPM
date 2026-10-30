@@ -1,28 +1,21 @@
 import { getStoredToken } from '@/lib/auth';
 
 export type PaymentMethod = 'WALLET' | 'CARD';
-export type PaymentStatus = 'PENDING' | 'SUCCESS' | 'FAILED';
-export type GatewayResult = 'SUCCESS' | 'FAILED';
-
-export interface CreatedPayment {
-  paymentId: string;
-  gatewayUrl: string;
-}
+// CUSTOMER_REPORTED = khách đã bấm "Tôi đã chuyển tiền", chờ nhân viên xác nhận
+export type PaymentStatus = 'PENDING' | 'CUSTOMER_REPORTED' | 'SUCCESS' | 'FAILED';
+export type OrderStatus = 'PENDING' | 'PAID' | 'PAYMENT_FAILED' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 
 export interface PaymentDetails {
   paymentId: string;
   orderId: string;
   status: PaymentStatus;
   amount: number;
-  method?: PaymentMethod;
-}
-
-export interface GatewayDetails {
-  paymentId: string;
-  orderId: string;
-  status: PaymentStatus;
-  amount: number;
   method: PaymentMethod;
+  orderStatus: OrderStatus | null;
+  reportedAt: string | null;
+  reviewNote: string | null;
+  createdAt: string | null;
+  expiresAt: string | null;
 }
 
 export class PaymentApiError extends Error {
@@ -32,9 +25,9 @@ export class PaymentApiError extends Error {
   }
 }
 
-const API_URL = (process.env.NEXT_PUBLIC_API_URL?.trim() || 'http://localhost:3001').replace(/\/+$/, '');
+export const API_URL = (process.env.NEXT_PUBLIC_API_URL?.trim() || 'http://localhost:3001').replace(/\/+$/, '');
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
 
@@ -46,79 +39,70 @@ function readErrorMessage(data: unknown, fallback: string): string {
   return fallback;
 }
 
-async function readResponse(response: Response, fallback: string): Promise<unknown> {
+export async function readResponse(response: Response, fallback: string): Promise<unknown> {
   const data: unknown = await response.json().catch(() => null);
   if (!response.ok) throw new PaymentApiError(readErrorMessage(data, fallback), response.status);
   return data;
 }
 
-function requireToken(): string {
+export function requireToken(): string {
   const token = getStoredToken();
-  if (!token) throw new PaymentApiError('Vui lòng đăng nhập để thanh toán.', 401);
+  if (!token) throw new PaymentApiError('Vui lòng đăng nhập để tiếp tục.', 401);
   return token;
 }
 
-function isStatus(value: unknown): value is PaymentStatus {
-  return value === 'PENDING' || value === 'SUCCESS' || value === 'FAILED';
-}
+const PAYMENT_STATUSES: readonly PaymentStatus[] = ['PENDING', 'CUSTOMER_REPORTED', 'SUCCESS', 'FAILED'];
+const ORDER_STATUSES: readonly OrderStatus[] = ['PENDING', 'PAID', 'PAYMENT_FAILED', 'PREPARING', 'READY', 'COMPLETED', 'CANCELLED'];
 
-function isMethod(value: unknown): value is PaymentMethod {
-  return value === 'WALLET' || value === 'CARD';
-}
+const optionalString = (value: unknown): string | null => (typeof value === 'string' ? value : null);
 
-export async function createPayment(orderId: string, method: PaymentMethod, idempotencyKey: string): Promise<CreatedPayment> {
-  const response = await fetch(`${API_URL}/payments`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      Authorization: `Bearer ${requireToken()}`,
-      'Idempotency-Key': idempotencyKey,
-    },
-    body: JSON.stringify({ orderId, method }),
-  });
-  const data = await readResponse(response, 'Không tạo được phiên thanh toán. Vui lòng thử lại.');
-  if (!isRecord(data) || typeof data.paymentId !== 'string' || typeof data.gatewayUrl !== 'string') {
-    throw new Error('Phản hồi tạo thanh toán không đúng định dạng.');
-  }
-  return { paymentId: data.paymentId, gatewayUrl: data.gatewayUrl };
-}
-
-export async function getPayment(paymentId: string): Promise<PaymentDetails> {
-  const response = await fetch(`${API_URL}/payments/${encodeURIComponent(paymentId)}`, {
-    headers: { Accept: 'application/json', Authorization: `Bearer ${requireToken()}` },
-    cache: 'no-store',
-  });
-  const data = await readResponse(response, 'Không kiểm tra được trạng thái thanh toán.');
+/** Validates the payment view returned by every payment endpoint. */
+export function parsePayment(data: unknown): PaymentDetails {
   if (!isRecord(data) || typeof data.paymentId !== 'string' || typeof data.orderId !== 'string' ||
-    typeof data.amount !== 'number' || !isStatus(data.status)) {
-    throw new Error('Phản hồi trạng thái thanh toán không đúng định dạng.');
+    typeof data.amount !== 'number' || !PAYMENT_STATUSES.includes(data.status as PaymentStatus) ||
+    (data.method !== 'WALLET' && data.method !== 'CARD')) {
+    throw new Error('Phản hồi thanh toán không đúng định dạng.');
   }
   return {
     paymentId: data.paymentId,
     orderId: data.orderId,
     amount: data.amount,
-    status: data.status,
-    method: isMethod(data.method) ? data.method : undefined,
+    status: data.status as PaymentStatus,
+    method: data.method,
+    orderStatus: ORDER_STATUSES.includes(data.orderStatus as OrderStatus) ? data.orderStatus as OrderStatus : null,
+    reportedAt: optionalString(data.reportedAt),
+    reviewNote: optionalString(data.reviewNote),
+    createdAt: optionalString(data.createdAt),
+    expiresAt: optionalString(data.expiresAt),
   };
 }
 
-// The public gateway is proxied through Next.js so a phone only needs access to the frontend URL.
-export async function getGatewayDetails(paymentId: string): Promise<GatewayDetails> {
-  const response = await fetch(`/api/mock-gateway/${encodeURIComponent(paymentId)}`, { cache: 'no-store' });
-  const data = await readResponse(response, 'Không tải được phiên thanh toán.');
-  if (!isRecord(data) || typeof data.paymentId !== 'string' || typeof data.orderId !== 'string' ||
-    typeof data.amount !== 'number' || !isMethod(data.method) || !isStatus(data.status)) {
-    throw new Error('Phản hồi cổng thanh toán không đúng định dạng.');
-  }
-  return { paymentId: data.paymentId, orderId: data.orderId, amount: data.amount, method: data.method, status: data.status };
+function authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  return { Accept: 'application/json', Authorization: `Bearer ${requireToken()}`, ...extra };
 }
 
-export async function confirmGatewayPayment(paymentId: string, result: GatewayResult): Promise<void> {
-  const response = await fetch(`/api/mock-gateway/${encodeURIComponent(paymentId)}`, {
+export async function createPayment(orderId: string, method: PaymentMethod, idempotencyKey: string): Promise<PaymentDetails> {
+  const response = await fetch(`${API_URL}/payments`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ result }),
+    headers: authHeaders({ 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }),
+    body: JSON.stringify({ orderId, method }),
   });
-  await readResponse(response, 'Cổng thanh toán chưa xử lý được yêu cầu.');
+  return parsePayment(await readResponse(response, 'Không tạo được phiên thanh toán. Vui lòng thử lại.'));
+}
+
+export async function getPayment(paymentId: string): Promise<PaymentDetails> {
+  const response = await fetch(`${API_URL}/payments/${encodeURIComponent(paymentId)}`, {
+    headers: authHeaders(),
+    cache: 'no-store',
+  });
+  return parsePayment(await readResponse(response, 'Không kiểm tra được trạng thái thanh toán.'));
+}
+
+/** "Tôi đã chuyển tiền": only notifies staff, the order is not paid yet. */
+export async function reportPaid(paymentId: string): Promise<PaymentDetails> {
+  const response = await fetch(`${API_URL}/payments/${encodeURIComponent(paymentId)}/report-paid`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  return parsePayment(await readResponse(response, 'Không gửi được thông báo. Vui lòng thử lại.'));
 }
