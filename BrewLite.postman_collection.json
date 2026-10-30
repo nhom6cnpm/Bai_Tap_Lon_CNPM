@@ -3,6 +3,11 @@
 		"name": "BrewLite API - Task 2, 6, 7, 8, 9 & 10 inventory",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
+	"variable": [
+		{ "key": "task10dOrderId", "value": "<ORDER_ID>" },
+		{ "key": "task10dToken", "value": "<YOUR_JWT_TOKEN>" },
+		{ "key": "task10dKey", "value": "task10d-review-001" }
+	],
 	"item": [
 		{
 			"name": "Products",
@@ -201,6 +206,40 @@
 		{
 			"name": "Payments",
 			"item": [
+				{
+					"name": "Create or Replay Payment (Task 10d - Stable Key)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{task10dToken}}" },
+							{ "key": "Idempotency-Key", "value": "{{task10dKey}}" }
+						],
+						"url": "http://localhost:3001/payments",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{task10dOrderId}}\",\n  \"method\": \"WALLET\"\n}"
+						},
+						"description": "Set task10dOrderId, task10dToken and task10dKey in collection variables. Send twice with the same variables: both return the same paymentId/gatewayUrl, including after payment is processed. A replay does not extend expiry or authorize another charge. After a failed attempt, use a new key to deliberately start a new attempt on the same unexpired order."
+					}
+				},
+				{
+					"name": "Replay with Changed Method (Task 10d - 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{ "key": "Content-Type", "value": "application/json" },
+							{ "key": "Authorization", "value": "Bearer {{task10dToken}}" },
+							{ "key": "Idempotency-Key", "value": "{{task10dKey}}" }
+						],
+						"url": "http://localhost:3001/payments",
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"orderId\": \"{{task10dOrderId}}\",\n  \"method\": \"CARD\"\n}"
+						},
+						"description": "Run after the WALLET stable-key request with the same collection variables. Expect 400 because this key already identifies another method; no extra Payment or stock mutation."
+					}
+				},
 				{
 					"name": "Create Payment",
 					"request": {

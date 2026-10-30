@@ -28,7 +28,7 @@ const databaseUrl = process.env.TEST_DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
 
 describeDatabase(
-  'Task 10c with real PostgreSQL (dedicated _test database)',
+  'Task 9 / Task 10 with real PostgreSQL (dedicated _test database)',
   () => {
     let database: DataSource;
     let app: INestApplication;
@@ -120,7 +120,8 @@ describeDatabase(
       app = module.createNestApplication();
       app.useGlobalPipes(new ValidationPipe());
       app.useLogger(false);
-      await app.init();
+      // Bind once so concurrent Supertest requests share one listening server.
+      await app.listen(0, '127.0.0.1');
       orders = app.get(OrdersService);
       payments = app.get(PaymentsService);
     }, 30000);
@@ -754,6 +755,291 @@ describeDatabase(
           unitPrice: 12345,
         });
         expect(response.body.total).toBe(12345);
+      });
+    });
+
+    describe('Task 10d payment idempotency', () => {
+      const checkout = (orderId: string, key: string, method = 'WALLET') =>
+        request(app.getHttpServer())
+          .post('/payments')
+          .set('Authorization', `Bearer ${token}`)
+          .set('Idempotency-Key', key)
+          .send({ orderId, method });
+      const signedCallback = (
+        paymentId: string,
+        result: 'SUCCESS' | 'FAILED',
+      ) =>
+        request(app.getHttpServer())
+          .post('/payments/callback')
+          .send({
+            paymentId,
+            result,
+            signature: payments.generateSignature(paymentId, result),
+          });
+
+      it('creates exactly one payment for twelve simultaneous HTTP requests with the same key', async () => {
+        const created = await create();
+        const key = randomUUID();
+        const responses = await Promise.all(
+          Array.from({ length: 12 }, () => checkout(created.orderId, key)),
+        );
+        expect(responses.map((response) => response.status)).toEqual(
+          Array(12).fill(201),
+        );
+        expect(
+          new Set(responses.map((response) => response.body.paymentId)).size,
+        ).toBe(1);
+        expect(await database.getRepository(Payment).count()).toBe(1);
+        expect((await stock()).quantity).toBe(980);
+        expect((await stock()).version).toBe(2);
+        expect((await getOrder(created.orderId)).expiresAt.getTime()).toBe(
+          created.expiresAt.getTime(),
+        );
+      });
+
+      it.each([
+        'PAID',
+        'PREPARING',
+        'READY',
+        'COMPLETED',
+        'CANCELLED',
+      ] as const)(
+        'replays the original payment after the order reaches %s without repeating business effects',
+        async (status) => {
+          const created = await create();
+          const key = randomUUID();
+          const first = await checkout(created.orderId, key).expect(201);
+          await signedCallback(first.body.paymentId, 'SUCCESS').expect(201);
+          if (status === 'CANCELLED')
+            await orders.cancelOrder(userId, created.orderId);
+          else {
+            for (const next of ['PREPARING', 'READY', 'COMPLETED'] as const) {
+              if (status === 'PAID') break;
+              await orders.updateOrderStatus(created.orderId, next);
+              if (next === status) break;
+            }
+          }
+          const before = await stock();
+          const replay = await checkout(created.orderId, key).expect(201);
+          expect(replay.body).toMatchObject({
+            paymentId: first.body.paymentId,
+            gatewayUrl: first.body.gatewayUrl,
+            status: 'SUCCESS',
+          });
+          expect(await database.getRepository(Payment).count()).toBe(1);
+          expect((await getOrder(created.orderId)).status).toBe(status);
+          expect((await getOrder(created.orderId)).expiresAt.getTime()).toBe(
+            created.expiresAt.getTime(),
+          );
+          expect(await stock()).toMatchObject({
+            quantity: before.quantity,
+            version: before.version,
+          });
+          await checkout(created.orderId, randomUUID()).expect(400);
+        },
+      );
+
+      it('replays a failed attempt unchanged; only a new key starts a new attempt on the same order', async () => {
+        const created = await create();
+        const key = randomUUID();
+        const first = await checkout(created.orderId, key).expect(201);
+        await signedCallback(first.body.paymentId, 'FAILED').expect(201);
+        const replay = await checkout(created.orderId, key).expect(201);
+        expect(replay.body).toMatchObject({
+          paymentId: first.body.paymentId,
+          status: 'FAILED',
+        });
+        expect((await getOrder(created.orderId)).status).toBe('PAYMENT_FAILED');
+        const retried = await checkout(
+          created.orderId,
+          randomUUID(),
+          'CARD',
+        ).expect(201);
+        expect(retried.body.paymentId).not.toBe(first.body.paymentId);
+        expect((await getOrder(created.orderId)).status).toBe('PENDING');
+        expect((await getOrder(created.orderId)).expiresAt.getTime()).toBe(
+          created.expiresAt.getTime(),
+        );
+        expect((await stock()).version).toBe(2);
+        expect(await database.getRepository(Payment).count()).toBe(2);
+      });
+
+      it('replays an expired attempt without creating another payment or restoring the five-minute window', async () => {
+        const created = await create();
+        const key = randomUUID();
+        const first = await checkout(created.orderId, key).expect(201);
+        await expire(created.orderId);
+        const deadline = (await getOrder(created.orderId)).expiresAt.getTime();
+        const responses = await Promise.all(
+          Array.from({ length: 4 }, () => checkout(created.orderId, key)),
+        );
+        for (const response of responses) {
+          expect(response.status).toBe(201);
+          expect(response.body.paymentId).toBe(first.body.paymentId);
+        }
+        expect((await getOrder(created.orderId)).status).toBe('CANCELLED');
+        expect((await getOrder(created.orderId)).expiresAt.getTime()).toBe(
+          deadline,
+        );
+        expect(await database.getRepository(Payment).count()).toBe(1);
+        expect((await stock()).quantity).toBe(1000);
+        expect((await stock()).version).toBe(3);
+        await signedCallback(first.body.paymentId, 'SUCCESS').expect(400);
+      });
+
+      it('rejects reusing a key with a different payment method instead of returning an unrelated session', async () => {
+        const created = await create();
+        const key = randomUUID();
+        const first = await checkout(created.orderId, key).expect(201);
+        await checkout(created.orderId, key, 'CARD').expect(400);
+        expect(await database.getRepository(Payment).count()).toBe(1);
+        expect(
+          await database
+            .getRepository(Payment)
+            .findOneByOrFail({ id: first.body.paymentId }),
+        ).toMatchObject({ method: 'WALLET', status: 'PENDING' });
+        expect((await stock()).version).toBe(2);
+      });
+
+      it('rejects a key owned by another order, including simultaneous inserts on different orders', async () => {
+        const first = await create();
+        const second = await create();
+        const key = randomUUID();
+        const responses = await Promise.all([
+          checkout(first.orderId, key),
+          checkout(second.orderId, key),
+        ]);
+        expect(
+          responses.map((response) => response.status).sort((a, b) => a - b),
+        ).toEqual([201, 400]);
+        expect(await database.getRepository(Payment).count()).toBe(1);
+        expect(
+          responses.find((response) => response.status === 400)!.body.paymentId,
+        ).toBeUndefined();
+        expect((await stock()).quantity).toBe(960);
+        expect((await stock()).version).toBe(3);
+      });
+
+      it('does not disclose another account payment when its key is reused', async () => {
+        const first = await create();
+        const key = randomUUID();
+        await checkout(first.orderId, key).expect(201);
+        const other = await database.getRepository(User).save({
+          email: `${randomUUID()}@task10.test`,
+          passwordHash: 'not-used',
+          loyaltyPoints: 0,
+        });
+        const own = await orders.createOrder(other.id, { items: [item()] });
+        const otherToken = app
+          .get(JwtService)
+          .sign({ sub: other.id, email: other.email });
+        const response = await request(app.getHttpServer())
+          .post('/payments')
+          .set('Authorization', `Bearer ${otherToken}`)
+          .set('Idempotency-Key', key)
+          .send({ orderId: own.orderId, method: 'WALLET' })
+          .expect(400);
+        expect(response.body.paymentId).toBeUndefined();
+        expect(await database.getRepository(Payment).count()).toBe(1);
+        expect((await getOrder(own.orderId)).status).toBe('PENDING');
+      });
+
+      it('validates the key boundary before writing rather than returning a database error', async () => {
+        const created = await create();
+        await checkout(created.orderId, 'x'.repeat(129)).expect(400);
+        await checkout(created.orderId, '   ').expect(400);
+        expect(await database.getRepository(Payment).count()).toBe(0);
+        await checkout(created.orderId, 'x'.repeat(128)).expect(201);
+      });
+
+      it('serializes mixed success/failure callbacks and acknowledges only the first outcome', async () => {
+        const created = await create();
+        const first = await checkout(created.orderId, randomUUID()).expect(201);
+        const responses = await Promise.all(
+          Array.from({ length: 10 }, (_, index) =>
+            signedCallback(
+              first.body.paymentId,
+              index % 2 ? 'FAILED' : 'SUCCESS',
+            ),
+          ),
+        );
+        expect(responses.every((response) => response.status === 201)).toBe(
+          true,
+        );
+        expect(
+          new Set(responses.map((response) => response.body.status)).size,
+        ).toBe(1);
+        expect(
+          responses.filter(
+            (response) => response.body.message === 'Xử lý callback thành công',
+          ),
+        ).toHaveLength(1);
+        const payment = await database
+          .getRepository(Payment)
+          .findOneByOrFail({ id: first.body.paymentId });
+        expect((await getOrder(created.orderId)).status).toBe(
+          payment.status === 'SUCCESS' ? 'PAID' : 'PAYMENT_FAILED',
+        );
+        expect((await stock()).quantity).toBe(980);
+        expect((await stock()).version).toBe(2);
+      });
+
+      it('rolls the order back if persisting the payment outcome fails, then safely accepts a retry', async () => {
+        const created = await create();
+        const first = await checkout(created.orderId, randomUUID()).expect(201);
+        await database.query(
+          `ALTER TABLE payments ADD CONSTRAINT task10d_reject_success CHECK (status <> 'SUCCESS')`,
+        );
+        try {
+          await signedCallback(first.body.paymentId, 'SUCCESS').expect(500);
+          expect((await getOrder(created.orderId)).status).toBe('PENDING');
+          expect(
+            (
+              await database
+                .getRepository(Payment)
+                .findOneByOrFail({ id: first.body.paymentId })
+            ).status,
+          ).toBe('PENDING');
+          expect((await stock()).version).toBe(2);
+        } finally {
+          await database.query(
+            'ALTER TABLE payments DROP CONSTRAINT task10d_reject_success',
+          );
+        }
+        await signedCallback(first.body.paymentId, 'SUCCESS').expect(201);
+        expect((await getOrder(created.orderId)).status).toBe('PAID');
+      });
+
+      it('does not let a callback from an older failed attempt undo a successful retry', async () => {
+        const created = await create();
+        const first = await checkout(created.orderId, randomUUID()).expect(201);
+        await signedCallback(first.body.paymentId, 'FAILED').expect(201);
+        const second = await checkout(
+          created.orderId,
+          randomUUID(),
+          'CARD',
+        ).expect(201);
+        await signedCallback(second.body.paymentId, 'SUCCESS').expect(201);
+        const late = await signedCallback(
+          first.body.paymentId,
+          'FAILED',
+        ).expect(201);
+        expect(late.body.status).toBe('FAILED');
+        expect((await getOrder(created.orderId)).status).toBe('PAID');
+        expect((await stock()).version).toBe(2);
+      });
+
+      it('serializes successful callbacks racing with cancellation and refunds at most once', async () => {
+        const created = await create();
+        const first = await checkout(created.orderId, randomUUID()).expect(201);
+        await Promise.allSettled([
+          callback(first.body.paymentId),
+          orders.cancelOrder(userId, created.orderId),
+          orders.cancelOrder(userId, created.orderId),
+        ]);
+        expect((await getOrder(created.orderId)).status).toBe('CANCELLED');
+        expect((await stock()).quantity).toBe(1000);
+        expect((await stock()).version).toBe(3);
       });
     });
 

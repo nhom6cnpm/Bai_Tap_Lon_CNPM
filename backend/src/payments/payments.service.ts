@@ -44,6 +44,22 @@ export class PaymentsService {
     };
   }
 
+  private assertSameRequest(
+    payment: Payment,
+    userId: string,
+    dto: CreatePaymentDto,
+  ): void {
+    if (
+      payment.userId !== userId ||
+      payment.orderId !== dto.orderId ||
+      payment.method !== dto.method
+    ) {
+      throw new BadRequestException(
+        'Idempotency-Key đã được dùng cho yêu cầu thanh toán khác',
+      );
+    }
+  }
+
   async createPayment(
     userId: string,
     dto: CreatePaymentDto,
@@ -51,6 +67,11 @@ export class PaymentsService {
   ) {
     if (!idempotencyKey || !idempotencyKey.trim()) {
       throw new BadRequestException('Thiếu header Idempotency-Key');
+    }
+    if (idempotencyKey.length > 128) {
+      throw new BadRequestException(
+        'Idempotency-Key không được dài quá 128 ký tự',
+      );
     }
     try {
       const saved = await this.dataSource.transaction(async (manager) => {
@@ -61,6 +82,15 @@ export class PaymentsService {
           throw new ForbiddenException(
             'Bạn không có quyền thanh toán đơn hàng này',
           );
+        }
+        const repository = manager.getRepository(Payment);
+        const existing = await repository.findOneBy({ idempotencyKey });
+        if (existing) {
+          this.assertSameRequest(existing, userId, dto);
+          // A replay returns the original session, not permission to pay again.
+          // Expire unpaid orders without renewing their deadline or duplicating a refund.
+          await this.ordersService.expireIfNeeded(order, manager);
+          return existing;
         }
         if (
           (await this.ordersService.expireIfNeeded(order, manager)) ||
@@ -73,12 +103,6 @@ export class PaymentsService {
             'Đơn hàng này không còn chờ thanh toán',
           );
         }
-        const repository = manager.getRepository(Payment);
-        const existing = await repository.findOneBy({
-          idempotencyKey,
-          orderId: order.id,
-        });
-        if (existing) return existing;
         if (order.status === 'PAYMENT_FAILED') {
           const retried = await this.ordersService.updateOrderStatus(
             order.id,
@@ -121,16 +145,10 @@ export class PaymentsService {
         const winner = await this.paymentRepository.findOneBy({
           idempotencyKey,
         });
-        if (
-          winner &&
-          winner.orderId === dto.orderId &&
-          winner.userId === userId
-        ) {
+        if (winner) {
+          this.assertSameRequest(winner, userId, dto);
           return this.toSessionResponse(winner);
         }
-        throw new BadRequestException(
-          'Idempotency-Key đã được dùng cho đơn hàng khác',
-        );
       }
       throw error;
     }

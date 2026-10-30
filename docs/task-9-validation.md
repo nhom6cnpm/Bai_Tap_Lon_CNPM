@@ -97,7 +97,9 @@ trên DB riêng; chưa tạo tài khoản hoặc đơn thử mới vào DB đồ
 
 ## Phần chưa nghiệm thu toàn đồ án
 
-- Task 10d cần rà soát đầy đủ yêu cầu idempotency với phần Payment của Task 8.
+- Task 10d đã triển khai và kiểm thử trên nhánh `feature/task-10-payment-idempotency`:
+  tổng hiện tại 111 unit/HTTP test và 53 e2e qua; còn review nhóm. Xem
+  [Task 10d](task-10d-payments.md).
 - Task 10e chưa triển khai: cần quy tắc mã giảm giá và tỷ lệ/điều kiện tích điểm từ nhóm.
 - Chưa cập nhật Issue/nhắn nhóm, push hoặc merge main. Các nhánh phụ thuộc cần review.
 - QR được kiểm tra bằng trình duyệt thiết bị thứ hai, chưa quét bằng điện thoại vật lý qua Wi-Fi.

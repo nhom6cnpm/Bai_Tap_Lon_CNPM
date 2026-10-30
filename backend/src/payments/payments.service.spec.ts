@@ -145,6 +145,60 @@ describe('PaymentsService', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
+  it('returns the original successful payment when its key is replayed after PAID', async () => {
+    const first = await service.createPayment(
+      'user-1',
+      { orderId: 'ORD-123', method: 'WALLET' },
+      'paid-replay',
+    );
+    await service.processCallback({
+      paymentId: first.paymentId,
+      result: 'SUCCESS',
+      signature: service.generateSignature(first.paymentId, 'SUCCESS'),
+    });
+    findById.mockResolvedValueOnce(orderWith('PAID'));
+    const replay = await service.createPayment(
+      'user-1',
+      { orderId: 'ORD-123', method: 'WALLET' },
+      'paid-replay',
+    );
+    expect(replay).toMatchObject({
+      paymentId: first.paymentId,
+      status: 'SUCCESS',
+    });
+    expect(payments).toHaveLength(1);
+    expect(updateOrderStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects the same key with a changed method and preserves the original request', async () => {
+    await service.createPayment(
+      'user-1',
+      { orderId: 'ORD-123', method: 'WALLET' },
+      'method-mismatch',
+    );
+    await expect(
+      service.createPayment(
+        'user-1',
+        { orderId: 'ORD-123', method: 'CARD' },
+        'method-mismatch',
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(payments).toHaveLength(1);
+    expect(payments[0].method).toBe('WALLET');
+  });
+
+  it('rejects an oversized key before looking up the order or starting a payment', async () => {
+    await expect(
+      service.createPayment(
+        'user-1',
+        { orderId: 'ORD-123', method: 'CARD' },
+        'x'.repeat(129),
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(lockById).not.toHaveBeenCalled();
+    expect(payments).toHaveLength(0);
+  });
+
   it('báo lỗi nếu đơn hàng không tồn tại', async () => {
     await expect(
       service.createPayment(

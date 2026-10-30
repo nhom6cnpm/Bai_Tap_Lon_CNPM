@@ -85,20 +85,32 @@ frontend Task 8; cần review các phần phụ thuộc trước khi đưa lên 
 
 Xem [kết quả đối chiếu giao diện](task-9-ui-review.md).
 
-## 4. Tích hợp Task 10d với Task 8
+## 4. Tích hợp Task 10d với Task 8 — đã triển khai, chờ review nhóm
 
-**Bước tiếp theo:** rà soát tiêu chí Task 10d trên nền Payment/transaction đang có;
-không tạo module thanh toán thứ hai. Task 10e vẫn cần nhóm chốt quy tắc nghiệp vụ.
+Nhánh `feature/task-10-payment-idempotency`, cùng thư mục chính. Dùng nền tích hợp
+`b0a4a90`; chỉ bổ sung vào PaymentsService hiện có, giữ callback/transaction của nhóm.
 
 - [ ] Thống nhất phạm vi với Tài, dùng chung phần Payment/idempotency/callback.
-- [ ] Cùng Idempotency-Key, kể cả gửi đồng thời, chỉ tạo một Payment.
-- [ ] Callback lặp không đổi trạng thái hoặc cộng điểm lần hai.
-- [ ] Kiểm tra transaction Payment/Order và tình huống hủy/hết hạn ở bước 2.
+- [x] Dùng chung Payment/idempotency/callback của Task 8, không thêm module trùng.
+- [x] Cùng Idempotency-Key, kể cả gửi đồng thời, chỉ tạo một Payment.
+- [x] Gửi lại đúng phiên cũ sau PAID; khóa trùng nhưng đổi đơn/tài khoản/phương thức bị từ chối.
+- [x] Callback lặp không đổi trạng thái hoặc giữ/trừ kho lần hai.
+- [x] Kiểm tra transaction Payment/Order, rollback và tình huống hủy/hết hạn ở bước 2.
+- [x] 111 unit/HTTP test và 53 e2e PostgreSQL qua, không skip; lint/format/build qua.
+- [x] Hai luồng ví QR/thẻ trên trình duyệt qua; cập nhật backend Docker 3001,
+      giữ nguyên frontend/database và kiểm tra fingerprint dữ liệu đồ án.
+
+Chi tiết: [Task 10d](task-10d-payments.md). Kiểm tra cộng loyaltyPoints đúng một
+lần sẽ thực hiện cùng Task 10e; chưa có tính điểm trong bản này. Chưa gửi tin nhắn
+cho Tài, cập nhật Issue, push hoặc merge main.
 
 Backend Task 8 đã có trong main `c12a42c`; dùng phần hiện có để rà soát và tích hợp.
 Phối hợp thiết kế từ bước 2, kiểm chứng với DB thật và giao diện thanh toán khi sẵn sàng.
 
-## 5. Hoàn thiện Task 10e — giảm giá và điểm thưởng
+## 5. Hoàn thiện Task 10e — chờ nhóm chốt quy tắc
+
+Ân xác nhận ngày 30/10: **chưa chốt, để Task 10e chờ**. Không tự đặt mã/mức giảm,
+thời hạn, điều kiện hoặc tỷ lệ tích điểm. Tiếp tục sau khi có yêu cầu đã thống nhất.
 
 - [ ] Nhóm xác định mã, mức giảm, điều kiện áp dụng và tỷ lệ tích điểm;
       không tự đặt quy tắc chưa được giao.
@@ -110,7 +122,7 @@ Phối hợp thiết kế từ bước 2, kiểm chứng với DB thật và gia
 
 Đã hoàn tất việc thống nhất thư mục chính, cập nhật Docker và kiểm tra bảo toàn
 dữ liệu khi đưa Task 9/10c vào chạy. Checklist dưới đây là nghiệm thu cuối **cả
-Task 9 và Task 10c/d/e**, còn chờ hoàn thiện 10d/e.
+Task 9 và Task 10c/d/e**, còn chờ Task 10e và review nhóm cho các nhánh đã triển khai.
 
 - [ ] Lint, format, build và các test cần thiết của cả hai task đều qua.
 - [ ] Chạy Docker cùng PostgreSQL thật; kiểm tra migration và bảo toàn dữ liệu.
@@ -131,7 +143,7 @@ Task 9 và Task 10c/d/e**, còn chờ hoàn thiện 10d/e.
 
 - `D:\Do_an_CNPM\BrewLite-availability`: code nhóm + phần số ly mới và checklist này.
 - `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`: thư mục làm việc chính, nhánh
-  `feature/task-9-integration`, đã chứa Task 9, nền Task 10c và frontend Task 8;
+  `feature/task-10-payment-idempotency` khi làm Task 10d, đã chứa Task 9, nền Task 10c và frontend Task 8;
   không còn xung đột merge.
 - `D:\Do_an_CNPM\BrewLite-task9-integration`: bản đối chiếu ở commit `4270997`
   (detached HEAD); tiếp tục phát triển trong thư mục chính.

@@ -7,13 +7,16 @@ Nền làm việc Task 9: [kế hoạch tích hợp với schema và auth của 
 Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integration.md),
 [kết quả kiểm thử](docs/task-9-validation.md).
 
-Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`, nhánh
-`feature/task-9-integration`. [Ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
+Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`.
+Task 9 ở nhánh `feature/task-9-integration`; bước Task 10d ở nhánh
+`feature/task-10-payment-idempotency`. [Ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
 
 **Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
 — checklist, phạm vi đã chốt và bước tiếp theo.
 
 Task 10c: [giữ nguyên liệu 5 phút, hủy/hết hạn và kiểm thử PostgreSQL](docs/task-10c-inventory.md).
+
+Task 10d: [khóa yêu cầu thanh toán, gửi lại và callback lặp](docs/task-10d-payments.md).
 
 ## Công nghệ
 
