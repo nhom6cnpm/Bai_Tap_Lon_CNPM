@@ -15,9 +15,15 @@ async function start() {
     throw new Error('Refusing to reset a non-test database');
   }
   await database.query(
-    'TRUNCATE order_ingredient_reservations, order_items, payments, orders, users CASCADE',
+    'TRUNCATE vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
   );
   await database.query('UPDATE ingredients SET quantity = 10000, version = 1');
+  // These codes exist only in the guarded _ui_test database, never in app migrations.
+  await database.query(`INSERT INTO vouchers
+    (code, title, "discountType", "discountValue", "minSubtotal", "startsAt", "endsAt", "isActive", "isPublic") VALUES
+    ('UI10K', 'Ưu đãi kiểm thử 10.000đ', 'FIXED', 10000, 0, now() - interval '1 day', now() + interval '1 day', true, true),
+    ('UIMIN', 'Ưu đãi cho đơn từ 70.000đ', 'FIXED', 15000, 70000, now() - interval '1 day', now() + interval '1 day', true, true),
+    ('UIPRIVATE', 'Mã nhập riêng kiểm thử', 'PERCENT', 10, 0, now() - interval '1 day', now() + interval '1 day', true, false)`);
   app.useGlobalPipes(new ValidationPipe());
   app.enableCors({ origin: 'http://127.0.0.1:3200' });
   app.enableShutdownHooks();

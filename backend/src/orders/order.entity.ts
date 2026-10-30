@@ -25,6 +25,18 @@ export class Order {
   @Column({ type: 'int' })
   total!: number;
 
+  @Column({ type: 'int' })
+  subtotal!: number;
+
+  @Column({ type: 'int', default: 0 })
+  discount!: number;
+
+  @Column({ type: 'varchar', length: 32, nullable: true })
+  voucherCode!: string | null;
+
+  @Column({ type: 'varchar', length: 160, nullable: true })
+  voucherTitle!: string | null;
+
   @OneToMany(() => OrderItem, (item) => item.order, { cascade: true })
   items!: OrderItem[];
 

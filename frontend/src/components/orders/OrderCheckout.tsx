@@ -1,4 +1,5 @@
 "use client";
+import OrderDiscount from "./OrderDiscount";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -149,6 +150,7 @@ export function OrderCheckout({ id }: { id: string }) {
         <p className="mt-3 break-all text-sm text-stone-600">
           Mã đơn: <strong className="text-stone-900">{id}</strong>
         </p>
+        <OrderDiscount order={order} />
         <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-amber-50 p-5">
           <span className="font-semibold">Tổng tiền đơn hàng</span>
           <strong className="text-2xl text-amber-900">

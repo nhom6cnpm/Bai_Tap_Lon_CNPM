@@ -4,11 +4,44 @@
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"variable": [
+		{ "key": "voucherCode", "value": "<MA_NHOM_DA_CHOT>" },
 		{ "key": "task10dOrderId", "value": "<ORDER_ID>" },
 		{ "key": "task10dToken", "value": "<YOUR_JWT_TOKEN>" },
 		{ "key": "task10dKey", "value": "task10d-review-001" }
 	],
 	"item": [
+		{
+			"name": "Task 10e - Vouchers (no live codes seeded)",
+			"item": [
+				{
+					"name": "Quote cart and list public vouchers (does not reserve stock)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "http://localhost:3001/vouchers/quote",
+						"body": { "mode": "raw", "raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }]\n}" }
+					}
+				},
+				{
+					"name": "Validate an existing voucher and quote discounted total",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }],
+						"url": "http://localhost:3001/vouchers/quote",
+						"body": { "mode": "raw", "raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}" }
+					}
+				},
+				{
+					"name": "Create order with a voucher snapshot (requires a valid active code)",
+					"request": {
+						"method": "POST",
+						"header": [{ "key": "Content-Type", "value": "application/json" }, { "key": "Authorization", "value": "Bearer {{task10dToken}}" }],
+						"url": "http://localhost:3001/orders",
+						"body": { "mode": "raw", "raw": "{\n  \"items\": [{ \"productId\": \"1\", \"size\": \"S\", \"toppingIds\": [], \"qty\": 1 }],\n  \"voucherCode\": \"{{voucherCode}}\"\n}" }
+					}
+				}
+			]
+		},
 		{
 			"name": "Products",
 			"item": [

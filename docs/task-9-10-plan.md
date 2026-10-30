@@ -107,16 +107,24 @@ cho Tài, cập nhật Issue, push hoặc merge main.
 Backend Task 8 đã có trong main `c12a42c`; dùng phần hiện có để rà soát và tích hợp.
 Phối hợp thiết kế từ bước 2, kiểm chứng với DB thật và giao diện thanh toán khi sẵn sàng.
 
-## 5. Hoàn thiện Task 10e — chờ nhóm chốt quy tắc
+## 5. Hoàn thiện Task 10e — làm trước voucher, chờ quy tắc phát hành và tích điểm
 
-Ân xác nhận ngày 30/10: **chưa chốt, để Task 10e chờ**. Không tự đặt mã/mức giảm,
-thời hạn, điều kiện hoặc tỷ lệ tích điểm. Tiếp tục sau khi có yêu cầu đã thống nhất.
+Ân xác nhận ngày 30/10: chưa có quy tắc/mã được nhóm chốt, nhưng cho phép làm
+**giao diện và nền voucher trước**. Nhánh `feature/task-10-vouchers` trong thư mục
+chính. Không tự phát hành mã, đặt mức giảm thật hoặc tỷ lệ tích điểm.
 
 - [ ] Nhóm xác định mã, mức giảm, điều kiện áp dụng và tỷ lệ tích điểm;
       không tự đặt quy tắc chưa được giao.
-- [ ] Áp mã hợp lệ khi tạo đơn, tính giá trên backend và lưu kết quả trên đơn.
+- [x] Giao diện chọn mã công khai hoặc nhập mã, đổi/bỏ mã và trạng thái tải/rỗng/lỗi.
+- [x] API quote và kiểm tra khi tạo đơn, tính giá trên backend, lưu snapshot giảm giá.
+- [x] Checkout/xác nhận hiển thị giảm giá; QR/Thẻ dùng tổng sau giảm, thử lại giữ số tiền.
 - [ ] Cộng loyaltyPoints đúng một lần sau PAID, dùng chung luồng thanh toán.
-- [ ] Kiểm thử mã sai/hết hạn/không đủ điều kiện và callback lặp.
+- [x] Kiểm thử backend mã sai/hết hạn/không đủ điều kiện, rollback và callback lặp.
+- [x] 8 ca UI voucher desktop/mobile qua; build/cập nhật Docker, kiểm tra migration
+      trên DB bản sao và đối chiếu giữ nguyên dữ liệu đồ án. Chưa có voucher thật.
+- [ ] Hoàn tất nghiệm thu quy tắc kinh doanh và tích điểm sau khi nhóm chốt.
+
+Chi tiết phạm vi và cách xem: [Task 10e — voucher](task-10e-vouchers.md).
 
 ## 6. Kiểm thử tích hợp và bàn giao
 

@@ -19,6 +19,10 @@ export interface OrderHistoryResponseDto {
   id: string;
   status: OrderStatus;
   total: number;
+  subtotal: number;
+  discount: number;
+  voucherCode: string | null;
+  voucherTitle: string | null;
   createdAt: Date;
   expiresAt: Date;
   cancelledAt: Date | null;

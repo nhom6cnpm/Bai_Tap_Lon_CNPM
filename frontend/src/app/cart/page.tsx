@@ -18,6 +18,8 @@ import {
 import { useOwnOrder, useOrderClock } from "@/hooks/useOrderHistory";
 import { getMyOrder, OrderApiError } from "@/lib/orders/history";
 import { canPay, isPaid } from "@/lib/orderUtils";
+import VoucherPicker from "@/components/VoucherPicker";
+import { useVoucherQuote } from "@/hooks/useVoucherQuote";
 
 const toppingLabel = (ids: string[]) =>
   ids.length
@@ -30,6 +32,8 @@ export default function CartPage() {
   const hydrated = useHydrated();
   const items = useCart((s) => s.items);
   const total = useCart(selectTotalPrice);
+  const voucherCode = useCart((s) => s.voucherCode);
+  const setVoucherCode = useCart((s) => s.setVoucherCode);
   const setQty = useCart((s) => s.setQty);
   const removeItem = useCart((s) => s.removeItem);
   const router = useRouter();
@@ -48,6 +52,17 @@ export default function CartPage() {
     !!activeOrder.data &&
     (canPay(activeOrder.data, now) || isPaid(activeOrder.data.status));
   const requestInFlight = useRef(false);
+  const quote = useVoucherQuote(
+    items,
+    voucherCode || undefined,
+    hydrated && !resume,
+  );
+  const savedOrder = resume ? activeOrder.data : undefined;
+  const currentQuote = quote.isError ? undefined : quote.data;
+  const displayedSubtotal =
+    savedOrder?.subtotal ?? currentQuote?.subtotal ?? total;
+  const displayedDiscount = savedOrder?.discount ?? currentQuote?.discount ?? 0;
+  const displayedTotal = savedOrder?.total ?? currentQuote?.total ?? total;
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -97,7 +112,7 @@ export default function CartPage() {
           "Giỏ hàng vượt số ly còn bán. Vui lòng giảm số lượng hoặc đổi lựa chọn.",
         );
       }
-      const data = await submitOrderApi(items);
+      const data = await submitOrderApi(items, voucherCode || undefined);
       saveCheckout({
         orderId: data.orderId,
         total: data.total,
@@ -255,9 +270,52 @@ export default function CartPage() {
                 </button>
               )}
             </div>
+            <div className="flex items-center justify-between text-sm">
+              <span>Tạm tính</span>
+              <span>{formatPrice(displayedSubtotal)}</span>
+            </div>
+            <VoucherPicker
+              items={items}
+              selectedCode={
+                savedOrder?.voucherCode ?? (resume ? "" : voucherCode)
+              }
+              onSelect={setVoucherCode}
+              disabled={
+                loading || resume || (!!candidate && activeOrder.isPending)
+              }
+            />
+            {!resume && voucherCode && quote.isError && (
+              <div
+                role="alert"
+                className="mb-3 rounded-xl bg-red-50 p-3 text-sm text-red-700"
+              >
+                {quote.error.message} Bạn có thể đổi hoặc bỏ mã để tiếp tục.
+                <button
+                  onClick={() => void quote.refetch()}
+                  className="ml-2 font-semibold underline"
+                >
+                  Thử lại
+                </button>
+              </div>
+            )}
+            {!resume && voucherCode && quote.isFetching && (
+              <p role="status" className="mb-3 text-sm text-stone-500">
+                Đang kiểm tra ưu đãi…
+              </p>
+            )}
+            {(displayedDiscount > 0 ||
+              savedOrder?.voucherCode ||
+              voucherCode) && (
+              <div className="mb-3 flex items-center justify-between text-sm text-green-800">
+                <span>Giảm giá</span>
+                <span>−{formatPrice(displayedDiscount)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between text-lg font-bold">
-              <span>Tổng tiền</span>
-              <span className="text-amber-800">{formatPrice(total)}</span>
+              <span>Tổng thanh toán</span>
+              <span className="text-amber-800">
+                {formatPrice(displayedTotal)}
+              </span>
             </div>
 
             {errorMessage && (
@@ -282,6 +340,9 @@ export default function CartPage() {
                   loading ||
                   (!!candidate && activeOrder.isPending) ||
                   (!resume &&
+                    !!voucherCode &&
+                    (quote.isPending || quote.isFetching || quote.isError)) ||
+                  (!resume &&
                     (availability.isPending ||
                       availability.isFetching ||
                       availability.isError ||
@@ -293,7 +354,7 @@ export default function CartPage() {
                   ? "Đang xử lý…"
                   : resume
                     ? "Tiếp tục đơn hàng"
-                    : `Đặt hàng · ${formatPrice(total)}`}
+                    : `Đặt hàng · ${formatPrice(displayedTotal)}`}
               </button>
             </div>
           </div>

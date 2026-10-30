@@ -23,6 +23,8 @@ import { OrdersService } from '../src/orders/orders.service';
 import { Payment } from '../src/payments/entities/payment.entity';
 import { PaymentsService } from '../src/payments/payments.service';
 import { Product } from '../src/products/product.entity';
+import { Voucher } from '../src/vouchers/voucher.entity';
+import { AddVouchers1761850000000 } from '../src/migrations/1761850000000-AddVouchers';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
@@ -90,6 +92,7 @@ describeDatabase(
           ToppingRecipe,
           Payment,
           OrderInventoryReservation,
+          Voucher,
         ],
         migrations: [
           InitialSchema1761580800000,
@@ -97,6 +100,7 @@ describeDatabase(
           AddPayments1761750000000,
           OrderInventoryReservations1761830000000,
           OrderItemDisplaySnapshot1761840000000,
+          AddVouchers1761850000000,
         ],
         synchronize: false,
         logging: false,
@@ -129,7 +133,7 @@ describeDatabase(
     beforeEach(async () => {
       // The URL guard above is mandatory: this suite owns all rows in its test DB.
       await database.query(
-        'TRUNCATE order_ingredient_reservations, order_items, payments, orders, users CASCADE',
+        'TRUNCATE vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
       );
       await database.query(
         'UPDATE ingredients SET quantity = 1000, version = 1',
@@ -458,6 +462,7 @@ describeDatabase(
     it('preserves legacy rows through down/up migration and never refunds stock that was not deducted', async () => {
       await database.undoLastMigration();
       await database.undoLastMigration();
+      await database.undoLastMigration();
       await database.query(
         `INSERT INTO orders (id, "userId", status, total, "createdAt")
       VALUES ('LEGACY-EXPIRED', $1, 'PENDING', 35000, CURRENT_TIMESTAMP - INTERVAL '10 minutes')`,
@@ -474,8 +479,8 @@ describeDatabase(
 
     it('reserves a still-valid legacy order on payment without extending its original deadline', async () => {
       await database.query(
-        `INSERT INTO orders (id, "userId", status, total)
-      VALUES ('LEGACY-VALID', $1, 'PAYMENT_FAILED', 35000)`,
+        `INSERT INTO orders (id, "userId", status, subtotal, total)
+      VALUES ('LEGACY-VALID', $1, 'PAYMENT_FAILED', 35000, 35000)`,
         [userId],
       );
       await database.query(`INSERT INTO order_items (id, "orderId", "productId", size, "toppingIds", qty, "unitPrice", "lineTotal")
@@ -741,6 +746,7 @@ describeDatabase(
 
       it('backfills legacy item display fields without recalculating historical money', async () => {
         await database.undoLastMigration();
+        await database.undoLastMigration();
         await database.query(
           `INSERT INTO orders (id, "userId", status, total) VALUES ('LEGACY-HISTORY', $1, 'COMPLETED', 12345)`,
           [userId],
@@ -755,6 +761,301 @@ describeDatabase(
           unitPrice: 12345,
         });
         expect(response.body.total).toBe(12345);
+      });
+    });
+
+    describe('voucher selection, pricing and immutable payment totals', () => {
+      const voucher = (overrides: Partial<Voucher> = {}) =>
+        database.getRepository(Voucher).save({
+          code: 'TEST10K',
+          title: 'Test database only',
+          discountType: 'FIXED',
+          discountValue: 10000,
+          minSubtotal: 0,
+          maxDiscount: null,
+          startsAt: new Date(Date.now() - 60000),
+          endsAt: new Date(Date.now() + 3600000),
+          isActive: true,
+          isPublic: true,
+          ...overrides,
+        });
+      const quote = (
+        voucherCode?: unknown,
+        extra: Record<string, unknown> = {},
+      ) =>
+        request(app.getHttpServer())
+          .post('/vouchers/quote')
+          .send({
+            items: [item()],
+            ...(voucherCode === undefined ? {} : { voucherCode }),
+            ...extra,
+          });
+      const orderWithVoucher = (voucherCode: string) =>
+        request(app.getHttpServer())
+          .post('/orders')
+          .set('Authorization', `Bearer ${token}`)
+          .send({ items: [item()], voucherCode, total: 1, discount: 999999 });
+
+      it('shows an empty list without seeding arbitrary business promotions', async () => {
+        const response = await quote().expect(200);
+        expect(response.headers['cache-control']).toBe('no-store');
+        expect(response.body).toMatchObject({
+          subtotal: 35000,
+          discount: 0,
+          total: 35000,
+          voucherCode: null,
+          vouchers: [],
+        });
+        expect(await database.getRepository(Order).count()).toBe(0);
+      });
+
+      it('quotes server prices and normalizes entered codes without reserving inventory', async () => {
+        await voucher();
+        const response = await quote(' test10k ', {
+          subtotal: 1,
+          discount: 34999,
+          total: 1,
+        }).expect(200);
+        expect(response.body).toMatchObject({
+          subtotal: 35000,
+          discount: 10000,
+          total: 25000,
+          voucherCode: 'TEST10K',
+        });
+        expect(response.body.vouchers[0]).toMatchObject({
+          code: 'TEST10K',
+          unavailableReason: null,
+        });
+        expect((await stock()).quantity).toBe(1000);
+        expect((await stock()).version).toBe(1);
+        expect(await database.getRepository(Order).count()).toBe(0);
+      });
+
+      it('uses size/topping quantities and recalculates the minimum after a cart change', async () => {
+        await voucher({ minSubtotal: 60000 });
+        const one = await quote().expect(200);
+        expect(one.body.vouchers[0].unavailableReason).toContain('tối thiểu');
+        await quote('TEST10K').expect(400);
+        const two = await quote('TEST10K', {
+          items: [item({ size: 'L', toppingIds: ['cream'], qty: 2 })],
+        }).expect(200);
+        expect(two.body).toMatchObject({
+          subtotal: 100000,
+          discount: 10000,
+          total: 90000,
+        });
+      });
+
+      it('supports capped percentages with whole-dong rounding and caps fixed discounts at the subtotal', async () => {
+        await voucher({
+          discountType: 'PERCENT',
+          discountValue: 15,
+          maxDiscount: 5000,
+        });
+        expect((await quote('TEST10K').expect(200)).body.total).toBe(30000);
+        await voucher({ discountValue: 999999 });
+        expect((await quote('TEST10K').expect(200)).body).toMatchObject({
+          total: 0,
+          discount: 35000,
+        });
+      });
+
+      it('allows entering an active private code without disclosing it in the public list', async () => {
+        await voucher({ isPublic: false });
+        expect((await quote().expect(200)).body.vouchers).toEqual([]);
+        expect((await quote('TEST10K').expect(200)).body.total).toBe(25000);
+      });
+
+      it('rounds fractional percentage discounts down to whole dong', async () => {
+        await voucher({ discountType: 'PERCENT', discountValue: 10 });
+        await database.getRepository(Product).update('1', { price: 35001 });
+        try {
+          expect((await quote('TEST10K').expect(200)).body).toMatchObject({
+            subtotal: 35001,
+            discount: 3500,
+            total: 31501,
+          });
+        } finally {
+          await database.getRepository(Product).update('1', { price: 35000 });
+        }
+      });
+
+      it('rechecks expiry after waiting for a voucher row lock and rolls stock back', async () => {
+        await voucher();
+        const runner = database.createQueryRunner();
+        await runner.connect();
+        await runner.startTransaction();
+        await runner.query(
+          `UPDATE vouchers SET "endsAt" = clock_timestamp() + interval '200 milliseconds' WHERE code = 'TEST10K'`,
+        );
+        const pending = orders.createOrder(userId, {
+          items: [item()],
+          voucherCode: 'TEST10K',
+        });
+        // Attach a rejection handler immediately; the row lock below controls completion.
+        const outcome = pending.then(
+          () => null,
+          (error: unknown) => error,
+        );
+        try {
+          const deadline = Date.now() + 3000;
+          let didWait = false;
+          while (Date.now() < deadline) {
+            const [waiting] = await database.query<Array<{ count: number }>>(
+              `SELECT count(*)::int AS count FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND query LIKE '%vouchers%'`,
+            );
+            if (waiting.count) {
+              didWait = true;
+              break;
+            }
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          await runner.query('SELECT pg_sleep(0.25)');
+          await runner.commitTransaction();
+          expect(didWait).toBe(true);
+          expect(await outcome).toBeInstanceOf(Error);
+          expect((await stock()).quantity).toBe(1000);
+          expect(await database.getRepository(Order).count()).toBe(0);
+        } finally {
+          if (runner.isTransactionActive) await runner.rollbackTransaction();
+          await runner.release();
+          await outcome;
+        }
+      });
+
+      it.each([
+        { code: 'UNKNOWN' },
+        { isActive: false },
+        { startsAt: new Date(Date.now() + 60000) },
+        { endsAt: new Date(Date.now() - 1000) },
+        { minSubtotal: 35001 },
+      ])(
+        'rejects an unavailable code and rolls back the order and stock: %j',
+        async (overrides) => {
+          await voucher(overrides);
+          await orderWithVoucher('TEST10K').expect(400);
+          expect(await database.getRepository(Order).count()).toBe(0);
+          expect((await stock()).quantity).toBe(1000);
+          expect((await stock()).version).toBe(1);
+        },
+      );
+
+      it.each([123, {}, [], 'bad code', 'X'.repeat(33)])(
+        'validates malformed voucher input %j',
+        async (code) => {
+          await quote(code).expect(400);
+        },
+      );
+
+      it('rejects invalid quote items instead of accepting a client subtotal', async () => {
+        await quote(undefined, { items: [item({ qty: 0 })] }).expect(400);
+        await quote(undefined, { items: [] }).expect(400);
+        await quote(undefined, {
+          items: [item({ productId: 'unknown' })],
+        }).expect(400);
+      });
+
+      it('revalidates a previously quoted code when the order is created', async () => {
+        await voucher();
+        await quote('TEST10K').expect(200);
+        await database
+          .getRepository(Voucher)
+          .update('TEST10K', { isActive: false });
+        await orderWithVoucher('TEST10K').expect(400);
+        expect(await database.getRepository(Order).count()).toBe(0);
+        expect((await stock()).version).toBe(1);
+      });
+
+      it('snapshots the discount and pays the original amount even if the voucher changes or is removed', async () => {
+        await voucher();
+        const created = await orderWithVoucher('TEST10K').expect(201);
+        expect(created.body).toMatchObject({
+          subtotal: 35000,
+          discount: 10000,
+          total: 25000,
+          voucherCode: 'TEST10K',
+        });
+        await database.getRepository(Voucher).delete('TEST10K');
+        const session = await payments.createPayment(
+          userId,
+          { orderId: created.body.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        expect(
+          (await payments.getPaymentForGateway(session.paymentId)).amount,
+        ).toBe(25000);
+        await Promise.all([
+          callback(session.paymentId),
+          callback(session.paymentId),
+        ]);
+        const history = await request(app.getHttpServer())
+          .get(`/orders/${created.body.orderId}`)
+          .set('Authorization', `Bearer ${token}`)
+          .expect(200);
+        expect(history.body).toMatchObject({
+          status: 'PAID',
+          subtotal: 35000,
+          discount: 10000,
+          total: 25000,
+          voucherCode: 'TEST10K',
+        });
+        expect((await stock()).quantity).toBe(980);
+        expect(await database.getRepository(Payment).count()).toBe(1);
+      });
+
+      it('retries a failed payment on the discounted order without extending its deadline', async () => {
+        await voucher();
+        const created = await orderWithVoucher('TEST10K').expect(201);
+        const first = await payments.createPayment(
+          userId,
+          { orderId: created.body.orderId, method: 'CARD' },
+          randomUUID(),
+        );
+        await callback(first.paymentId, 'FAILED');
+        await database
+          .getRepository(Voucher)
+          .update('TEST10K', { isActive: false });
+        const retry = await payments.createPayment(
+          userId,
+          { orderId: created.body.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        expect(
+          (await payments.getPaymentForGateway(retry.paymentId)).amount,
+        ).toBe(25000);
+        expect(
+          (await getOrder(created.body.orderId)).expiresAt.toISOString(),
+        ).toBe(created.body.expiresAt);
+        await callback(retry.paymentId);
+        expect((await stock()).quantity).toBe(980);
+      });
+
+      it('keeps the discounted snapshot through expiry and refunds ingredients once', async () => {
+        await voucher();
+        const created = await orderWithVoucher('TEST10K').expect(201);
+        await expire(created.body.orderId);
+        await orders.expireUnpaidOrders();
+        await orders.cancelOrder(userId, created.body.orderId);
+        expect(await getOrder(created.body.orderId)).toMatchObject({
+          status: 'CANCELLED',
+          total: 25000,
+          discount: 10000,
+        });
+        expect((await stock()).quantity).toBe(1000);
+        expect((await stock()).version).toBe(3);
+      });
+
+      it('backfills existing order totals through the voucher migration without activating any codes', async () => {
+        const created = await create();
+        await database.undoLastMigration();
+        await database.runMigrations();
+        expect(await getOrder(created.orderId)).toMatchObject({
+          subtotal: 35000,
+          discount: 0,
+          total: 35000,
+          voucherCode: null,
+        });
+        expect(await database.getRepository(Voucher).count()).toBe(0);
       });
     });
 

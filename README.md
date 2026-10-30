@@ -18,6 +18,10 @@ Task 10c: [giữ nguyên liệu 5 phút, hủy/hết hạn và kiểm thử Post
 
 Task 10d: [khóa yêu cầu thanh toán, gửi lại và callback lặp](docs/task-10d-payments.md).
 
+Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá trên đơn](docs/task-10e-vouchers.md).
+Đã có giao diện và nền xử lý trên nhánh `feature/task-10-vouchers`; chưa bật mã thật hoặc
+tích điểm khi nhóm chưa chốt quy tắc.
+
 ## Công nghệ
 
 API và giao diện số ly còn bán theo size/topping:
@@ -129,9 +133,13 @@ cd backend
 # Chạy kiểm thử đơn vị (Unit Tests)
 npm test
 
-# Chạy kiểm thử tích hợp (e2e Tests) — yêu cầu PostgreSQL đang chạy:
-# (Khởi động DB: docker compose up -d postgres)
+# Chạy e2e với PostgreSQL và database riêng, tên phải kết thúc bằng _test.
+# Tạo DB một lần từ thư mục gốc:
+# docker compose exec postgres createdb -U brewlite brewlite_task10_test
+# PowerShell, từ backend:
+$env:TEST_DATABASE_URL = 'postgresql://brewlite:brewlite@127.0.0.1:5432/brewlite_task10_test'
 npm run test:e2e
+# Không đặt TEST_DATABASE_URL thì các suite DB bị skip, không phải test đã qua.
 
 # Kiểm tra linter
 npm run lint

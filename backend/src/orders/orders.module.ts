@@ -10,6 +10,7 @@ import { Payment } from '../payments/entities/payment.entity';
 import { User } from '../auth/user.entity';
 import { Order } from './order.entity';
 import { OrderItem } from './order-item.entity';
+import { VouchersModule } from '../vouchers/vouchers.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { OrderItem } from './order-item.entity';
       User,
     ]),
     InventoryModule,
+    VouchersModule,
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrderExpiryService, OrderHistoryService],

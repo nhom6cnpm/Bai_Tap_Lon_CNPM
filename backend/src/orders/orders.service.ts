@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
-import { Product } from '../products/product.entity';
+import { VouchersService } from '../vouchers/vouchers.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import type {
   CreateOrderResponseDto,
@@ -21,7 +21,7 @@ import {
   ORDER_PAYMENT_WINDOW_MS,
   type CancellationReason,
 } from './order-expiry';
-import { calculateUnitPrice } from './pricing';
+import { priceOrderItems } from './price-order-items';
 import { assertTransition, type OrderStatus } from './order-status';
 
 @Injectable()
@@ -31,6 +31,7 @@ export class OrdersService {
     private readonly orderRepository: Repository<Order>,
     private readonly dataSource: DataSource,
     private readonly inventoryService: InventoryService,
+    private readonly vouchersService: VouchersService,
   ) {}
 
   async databaseNow(manager: EntityManager): Promise<Date> {
@@ -47,60 +48,49 @@ export class OrdersService {
     const savedOrder = await this.dataSource.transaction(async (manager) => {
       const now = await this.databaseNow(manager);
       const orderId = `ORD-${randomUUID()}`;
-      let total = 0;
-      const items: OrderItem[] = [];
-      for (const [index, item] of dto.items.entries()) {
-        const product = await manager
-          .getRepository(Product)
-          .findOneBy({ id: item.productId });
-        if (!product)
-          throw new BadRequestException(
-            `Sản phẩm ${item.productId} không tồn tại`,
-          );
-        const unitPrice = calculateUnitPrice(
-          product.price,
-          item.size,
-          item.toppingIds,
-        );
-        const lineTotal = unitPrice * item.qty;
-        total += lineTotal;
-        if (!Number.isSafeInteger(total) || total > 2_147_483_647) {
-          throw new BadRequestException(
-            'Tổng tiền đơn hàng vượt giới hạn lưu trữ',
-          );
-        }
-        items.push(
-          manager.getRepository(OrderItem).create({
-            id: `${orderId}-${index + 1}`,
-            orderId,
-            productId: item.productId,
-            productName: product.name,
-            productImageUrl: product.imageUrl,
-            size: item.size,
-            toppingIds: item.toppingIds,
-            qty: item.qty,
-            unitPrice,
-            lineTotal,
-          }),
-        );
-      }
+      const { subtotal, lines } = await priceOrderItems(manager, dto.items);
+      const items = lines.map((line, index) =>
+        manager.getRepository(OrderItem).create({
+          ...line,
+          id: `${orderId}-${index + 1}`,
+          orderId,
+        }),
+      );
       const order = manager.getRepository(Order).create({
         id: orderId,
         userId,
         status: 'PENDING',
-        total,
+        subtotal,
+        discount: 0,
+        total: subtotal,
         items,
         createdAt: now,
         expiresAt: new Date(now.getTime() + ORDER_PAYMENT_WINDOW_MS),
       });
       await manager.save(Order, order);
       await this.ensureInventoryReservation(order, manager);
+      // Validate after inventory waits; an expired voucher rolls back the whole order.
+      Object.assign(
+        order,
+        await this.vouchersService.apply(
+          manager,
+          subtotal,
+          dto.voucherCode,
+          await this.databaseNow(manager),
+          true,
+        ),
+      );
+      await manager.save(Order, order);
       return order;
     });
     return {
       message: 'Tạo đơn hàng thành công',
       orderId: savedOrder.id,
       total: savedOrder.total,
+      subtotal: savedOrder.subtotal,
+      discount: savedOrder.discount,
+      voucherCode: savedOrder.voucherCode,
+      voucherTitle: savedOrder.voucherTitle,
       status: savedOrder.status,
       createdAt: savedOrder.createdAt,
       expiresAt: savedOrder.expiresAt,

@@ -5,6 +5,10 @@ export interface CreateOrderResponse {
   message: string;
   orderId: string;
   total: number;
+  subtotal: number;
+  discount: number;
+  voucherCode: string | null;
+  voucherTitle: string | null;
   status: "PENDING";
   createdAt: string;
   expiresAt: string;
@@ -14,6 +18,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export async function submitOrderApi(
   items: CartItem[],
+  voucherCode?: string,
 ): Promise<CreateOrderResponse> {
   const token = getStoredToken();
   if (!token) {
@@ -22,6 +27,7 @@ export async function submitOrderApi(
 
   // Only send what the backend needs; the backend recalculates prices
   const orderPayload = {
+    ...(voucherCode ? { voucherCode } : {}),
     items: items.map((item) => ({
       productId: item.productId,
       size: item.size,

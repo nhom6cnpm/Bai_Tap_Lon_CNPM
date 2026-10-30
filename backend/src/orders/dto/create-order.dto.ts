@@ -4,11 +4,13 @@ import {
   IsIn,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
+  Matches,
   Min,
   ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   SIZE_IDS,
   TOPPING_IDS,
@@ -34,6 +36,17 @@ export class OrderItemDto {
 }
 
 export class CreateOrderDto {
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim().toUpperCase() : value,
+  )
+  @IsString()
+  @Matches(/^[A-Z0-9][A-Z0-9_-]{0,31}$/, {
+    message:
+      'Mã giảm giá phải có 1–32 ký tự chữ, số, dấu gạch ngang hoặc gạch dưới.',
+  })
+  voucherCode?: string;
+
   @IsArray()
   @ArrayNotEmpty({ message: 'Danh sách items không được để trống' })
   @ValidateNested({ each: true })

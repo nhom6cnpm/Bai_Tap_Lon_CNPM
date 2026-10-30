@@ -42,6 +42,11 @@ function isOrder(value: unknown): value is Order {
     value.id.length > 0 &&
     ORDER_STATUSES.some((status) => status === value.status) &&
     money(value.total) &&
+    money(value.subtotal) &&
+    money(value.discount) &&
+    value.total === (value.subtotal as number) - (value.discount as number) &&
+    (value.voucherCode === null || typeof value.voucherCode === "string") &&
+    (value.voucherTitle === null || typeof value.voucherTitle === "string") &&
     date(value.createdAt) &&
     date(value.expiresAt) &&
     date(value.serverTime) &&

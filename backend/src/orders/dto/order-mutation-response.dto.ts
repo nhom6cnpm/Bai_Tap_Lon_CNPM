@@ -5,6 +5,10 @@ export interface CreateOrderResponseDto {
   message: string;
   orderId: string;
   total: number;
+  subtotal: number;
+  discount: number;
+  voucherCode: string | null;
+  voucherTitle: string | null;
   status: OrderStatus;
   createdAt: Date;
   expiresAt: Date;

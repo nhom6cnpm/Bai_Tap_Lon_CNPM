@@ -1,4 +1,5 @@
 "use client";
+import OrderDiscount from "./OrderDiscount";
 import Link from "next/link";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
@@ -109,6 +110,7 @@ export function OrderDetail({
                 <div className="mt-4 border-t border-stone-100">
                   <OrderItems order={order} />
                 </div>
+                <OrderDiscount order={order} />
                 <div className="mt-2 flex items-center justify-between gap-3 border-t border-stone-200 pt-5 font-bold">
                   <span>Tổng tiền đơn hàng</span>
                   <strong className="text-xl text-amber-900">

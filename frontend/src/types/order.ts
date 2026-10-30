@@ -27,6 +27,10 @@ export interface Order {
   id: string;
   status: OrderStatus;
   total: number;
+  subtotal: number;
+  discount: number;
+  voucherCode: string | null;
+  voucherTitle: string | null;
   createdAt: string;
   expiresAt: string;
   cancelledAt: string | null;
