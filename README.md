@@ -46,7 +46,8 @@ sử/chi tiết đơn. Bản Docker đang chạy đã có các bước này.
 Mở http://localhost:3000/menu; nhân viên dùng `/admin/payments` và `/admin/orders`.
 Docker giữ chỗ 15 phút, có voucher/điểm/hủy/pha chế, ba dịch vụ có healthcheck.
 Đã qua 62/62 ca desktop/mobile trên production image, thử migration trên bản sao
-và giữ nguyên dữ liệu cũ. Còn review nhóm trước merge; không push trực tiếp main.
+và giữ nguyên dữ liệu cũ. [Draft PR #31](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/pull/31)
+đã được tạo, còn review nhóm trước merge; không push trực tiếp main.
 Các tài liệu Task 10c/d cũ ghi luồng 5 phút/callback là lịch sử triển khai.
 
 ## Công nghệ

@@ -134,7 +134,8 @@ ngoài phạm vi được giao.
 
 ## Review và phần nhóm nghiệm thu
 
-Chuẩn bị PR tích hợp Task 9/10c/d/e dựa trên main hiện hành; phần kho, thanh toán,
+[Draft PR #31](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/pull/31) tích hợp
+Task 9/10c/d/e dựa trên main hiện hành; phần kho, thanh toán,
 voucher và giao diện có phụ thuộc chung nên cần đọc cùng diff khi review. PR cũ
 #9 đã đóng/chưa merge và không được mở lại hoặc ghi đè. Không push trực tiếp main.
 

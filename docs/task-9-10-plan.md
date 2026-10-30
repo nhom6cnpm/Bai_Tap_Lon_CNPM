@@ -65,7 +65,8 @@ chính với các bước mới; tiếp theo là mục 6, nghiệm thu tích h�
 62/62 ca UI Docker qua trong một lượt, kiểm tra migration trên bản sao và nâng cấp
 bản chạy 3000/3001. Cả ba dịch vụ healthy, dữ liệu cũ giữ nguyên, không hồi tố
 điểm/lượt; đã kiểm tra browser desktop/mobile trực tiếp. [Bàn giao và bằng chứng](task-9-10-handoff.md).
-Chuẩn bị PR để nhóm review; chưa merge main hoặc thay phần nghiệm thu chung của nhóm.
+[Draft PR #31](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/pull/31) đã được tạo
+để nhóm review; chưa merge main hoặc thay phần nghiệm thu chung của nhóm.
 
 ## Mốc tích hợp thanh toán nhân viên — lịch sử trước bước 1–6
 
