@@ -9,17 +9,17 @@ import {
 export type PaymentMethod = 'WALLET' | 'CARD';
 
 /**
- * PENDING            khách đã chọn phương thức, chưa chuyển tiền
- * CUSTOMER_REPORTED  khách bấm "Tôi đã chuyển tiền", chờ nhân viên kiểm tra
+ * PENDING            khách đã chọn phương thức, tiền chưa về
+ * TRANSFER_RECEIVED  ngân hàng giả lập ghi nhận tiền đã về, chờ nhân viên đối chiếu
  * SUCCESS            nhân viên xác nhận đã nhận tiền  → đơn PAID
- * FAILED             nhân viên từ chối                → đơn PAYMENT_FAILED
+ * FAILED             nhân viên từ chối / đơn bị hủy   → tiền (nếu có) được hoàn
  *
- * The order itself stays PENDING until staff decide: "customer reported" is a
+ * The order itself stays PENDING until staff decide: "money received" is a
  * payment state, not an order state (state machine đề mục 9.1 is unchanged).
  */
 export const PAYMENT_STATUSES = [
   'PENDING',
-  'CUSTOMER_REPORTED',
+  'TRANSFER_RECEIVED',
   'SUCCESS',
   'FAILED',
 ] as const;
@@ -28,7 +28,7 @@ export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
 /** Payments staff still have to decide on. */
 export const ACTIVE_PAYMENT_STATUSES: readonly PaymentStatus[] = [
   'PENDING',
-  'CUSTOMER_REPORTED',
+  'TRANSFER_RECEIVED',
 ];
 
 @Entity('payments')
@@ -56,9 +56,9 @@ export class Payment {
   @Column({ type: 'varchar', length: 32, default: 'PENDING' })
   status!: PaymentStatus;
 
-  // When the customer pressed "Tôi đã chuyển tiền"
+  // When the mock bank recorded the customer's transfer
   @Column({ type: 'timestamptz', nullable: true })
-  reportedAt!: Date | null;
+  receivedAt!: Date | null;
 
   // Staff decision: who, when, and an optional reason shown to the customer
   @Column({ type: 'timestamptz', nullable: true })

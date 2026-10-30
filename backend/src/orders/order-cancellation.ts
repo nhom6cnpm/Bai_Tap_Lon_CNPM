@@ -15,13 +15,13 @@ export type CancellationAction = 'IMMEDIATE' | 'REQUEST' | 'UNAVAILABLE';
 /** Evaluate only after ownership and the persisted deadline have been checked. */
 export function cancellationAction(
   status: OrderStatus,
-  hasReportedPayment: boolean,
+  hasReceivedTransfer: boolean,
   requestStatus: CancelRequestStatus | null,
 ): CancellationAction {
   if (requestStatus === 'PENDING') return 'UNAVAILABLE';
   if (status === 'PAID') return 'REQUEST';
   if (status === 'PENDING' || status === 'PAYMENT_FAILED')
-    return hasReportedPayment ? 'REQUEST' : 'IMMEDIATE';
+    return hasReceivedTransfer ? 'REQUEST' : 'IMMEDIATE';
   return 'UNAVAILABLE';
 }
 
@@ -35,17 +35,19 @@ export function assertNoPendingCancellation(order: Order): void {
 
 export function cancellationCapabilities(
   order: Order,
-  hasReportedPayment: boolean,
+  hasReceivedTransfer: boolean,
   now: Date,
 ): CancellationCapabilitiesDto {
+  // Money already received: not expired, the customer may still ask staff
   const expired =
     ['PENDING', 'PAYMENT_FAILED'].includes(order.status) &&
-    order.expiresAt <= now;
+    order.expiresAt <= now &&
+    !hasReceivedTransfer;
   const action = expired
     ? 'UNAVAILABLE'
     : cancellationAction(
         order.status,
-        hasReportedPayment,
+        hasReceivedTransfer,
         order.cancelRequestStatus,
       );
   return {

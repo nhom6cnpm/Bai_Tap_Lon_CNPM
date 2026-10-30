@@ -13,6 +13,7 @@ import { OrderItem } from './order-item.entity';
 import { VouchersModule } from '../vouchers/vouchers.module';
 import { OrderBenefitsService } from './order-benefits.service';
 import { AdminOrdersController } from './admin-orders.controller';
+import { BankLedgerModule } from '../mock-bank/bank-ledger.module';
 
 @Module({
   imports: [
@@ -25,6 +26,7 @@ import { AdminOrdersController } from './admin-orders.controller';
     ]),
     InventoryModule,
     VouchersModule,
+    BankLedgerModule,
   ],
   controllers: [OrdersController, AdminOrdersController],
   providers: [

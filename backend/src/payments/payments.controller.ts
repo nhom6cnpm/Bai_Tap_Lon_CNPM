@@ -5,7 +5,6 @@ import {
   Param,
   Body,
   Headers,
-  HttpCode,
   UseGuards,
   Req,
 } from '@nestjs/common';
@@ -39,12 +38,5 @@ export class PaymentsController {
   @Get(':id')
   getPayment(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.paymentsService.getPaymentById(id, req.user.userId);
-  }
-
-  // "Tôi đã chuyển tiền": only notifies staff, the order stays PENDING
-  @Post(':id/report-paid')
-  @HttpCode(200)
-  reportPaid(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
-    return this.paymentsService.reportPaid(req.user.userId, id);
   }
 }

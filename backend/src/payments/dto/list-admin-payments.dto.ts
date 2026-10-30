@@ -7,7 +7,7 @@ import {
 export type AdminPaymentFilter = 'ACTIVE' | 'ALL' | PaymentStatus;
 
 export class ListAdminPaymentsDto {
-  // ACTIVE (default) = PENDING + CUSTOMER_REPORTED
+  // ACTIVE (default) = PENDING + TRANSFER_RECEIVED
   @IsOptional()
   @IsIn(['ACTIVE', 'ALL', ...PAYMENT_STATUSES])
   status?: AdminPaymentFilter;
