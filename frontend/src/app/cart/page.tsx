@@ -56,7 +56,7 @@ export default function CartPage() {
   const quote = useVoucherQuote(
     items,
     voucherCode || undefined,
-    hydrated && !resume,
+    hydrated && !resume && !(!!candidate && activeOrder.isPending),
   );
   const savedOrder = resume ? activeOrder.data : undefined;
   const currentQuote = quote.isError ? undefined : quote.data;

@@ -8,6 +8,8 @@ import { formatPrice } from "@/lib/formatPrice";
 import type { CartItem } from "@/store/useCart";
 import VoucherIcon from "./VoucherIcon";
 import VoucherBadge from "./VoucherBadge";
+import { useAuth } from "@/hooks/useAuth";
+import { getStoredToken } from "@/lib/auth";
 
 interface Props {
   items: CartItem[];
@@ -25,23 +27,31 @@ function VoucherDialog({
   onClose,
 }: Props & { onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
+  const mounted = useRef(false);
   const [input, setInput] = useState("");
   const [draft, setDraft] = useState(selectedCode);
   const [notice, setNotice] = useState("");
-  const list = useVoucherQuote(items);
+  const { token } = useAuth();
+  const list = useVoucherQuote(items, undefined, true, 5_000);
   const check = useMutation({
-    mutationFn: (code: string) => quoteVoucher(items, code),
+    mutationKey: ["voucher-check", token],
+    mutationFn: (code: string) => quoteVoucher(items, code, undefined, token),
   });
   useEffect(() => {
+    mounted.current = true;
     const element = dialog.current;
     element?.showModal();
-    return () => element?.close();
+    return () => {
+      mounted.current = false;
+      element?.close();
+    };
   }, []);
 
   async function verify(code: string) {
     setNotice("");
     try {
       const result = await check.mutateAsync(code.trim().toUpperCase());
+      if (getStoredToken() !== token || !dialog.current?.open) return;
       setDraft(result.voucherCode ?? "");
       setNotice(
         `Mã ${result.voucherCode} hợp lệ. Giảm ${formatPrice(result.discount)}.`,
@@ -51,12 +61,29 @@ function VoucherDialog({
     }
   }
 
+  async function confirm() {
+    if (!draft) {
+      onSelect("");
+      onClose();
+      return;
+    }
+    setNotice("");
+    try {
+      const result = await check.mutateAsync(draft);
+      if (getStoredToken() !== token || !dialog.current?.open) return;
+      onSelect(result.voucherCode ?? "");
+      onClose();
+    } catch {
+      void list.refetch();
+    }
+  }
+
   return (
     <dialog
       ref={dialog}
       onClose={() => {
         // React Strict Mode can close and reopen the native dialog before its queued close event.
-        if (!dialog.current?.open) onClose();
+        if (mounted.current && !dialog.current?.open) onClose();
       }}
       aria-labelledby="voucher-title"
       className="fixed inset-x-0 bottom-0 top-auto m-0 max-h-[90dvh] w-full max-w-none flex-col overflow-hidden rounded-t-3xl border border-stone-200 bg-white p-0 text-stone-900 shadow-xl backdrop:bg-stone-950/40 open:flex sm:inset-0 sm:m-auto sm:max-w-xl sm:rounded-3xl"
@@ -135,6 +162,11 @@ function VoucherDialog({
             Chọn một mã cho đơn hàng
           </span>
         </div>
+        {!token && (
+          <p className="mt-2 text-xs text-stone-500">
+            Đăng nhập để xem số lượt voucher của bạn.
+          </p>
+        )}
         {list.isPending && (
           <p role="status" className="mt-4 text-sm">
             Đang tải ưu đãi…
@@ -195,6 +227,20 @@ function VoucherDialog({
                   <span className="mt-2 inline-block max-w-full break-all rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
                     {voucher.code}
                   </span>
+                  {voucher.usage && (
+                    <span className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                      <span
+                        className={`rounded-full px-2 py-1 font-semibold ${voucher.usage.availableUses > 0 ? "bg-amber-50 text-amber-900" : "bg-stone-100 text-stone-600"}`}
+                      >
+                        Còn {voucher.usage.availableUses} lượt
+                      </span>
+                      {voucher.usage.reservedUses > 0 && (
+                        <span className="text-stone-500">
+                          {voucher.usage.reservedUses} lượt đang giữ
+                        </span>
+                      )}
+                    </span>
+                  )}
                   <span className="mt-2 block text-xs leading-5">
                     Đơn tối thiểu {formatPrice(voucher.minSubtotal)}
                   </span>
@@ -242,11 +288,12 @@ function VoucherDialog({
             Bỏ chọn
           </button>
           <button
-            onClick={() => {
-              onSelect(draft);
-              onClose();
-            }}
-            disabled={check.isPending}
+            onClick={() => void confirm()}
+            disabled={
+              check.isPending ||
+              !!list.data?.vouchers.find((voucher) => voucher.code === draft)
+                ?.unavailableReason
+            }
             className="flex-1 rounded-full bg-amber-800 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >
             Xác nhận
@@ -259,6 +306,7 @@ function VoucherDialog({
 
 export default function VoucherPicker(props: Props) {
   const [open, setOpen] = useState(false);
+  const { token } = useAuth();
   const applied = !!props.selectedCode && props.appliedDiscount !== undefined;
   return (
     <div className="my-4 rounded-2xl border border-stone-200 p-4">
@@ -309,7 +357,7 @@ export default function VoucherPicker(props: Props) {
       )}
       {open && (
         <VoucherDialog
-          key={JSON.stringify(props.items)}
+          key={`${token ?? "guest"}:${JSON.stringify(props.items)}`}
           {...props}
           onClose={() => setOpen(false)}
         />

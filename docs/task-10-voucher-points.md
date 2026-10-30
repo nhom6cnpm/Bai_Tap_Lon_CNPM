@@ -100,8 +100,9 @@ npm.cmd run vouchers:seed -- --update
   32 dòng giữ nguyên liệu. Không hồi tố điểm hoặc sửa snapshot cũ.
 - Chỉ dùng `brewlite_benefits_step2_test` và `brewlite_benefits_step2_clone_test`.
   Sao lưu Git/DB trước bước này ở `.task9-recovery/benefits-step2` ngoài repo.
-- Chưa cập nhật database chính/container Docker hoặc frontend. Giao diện số lượt,
-  refresh điểm trên header/lịch sử sẽ làm ở bước 3; chưa đánh dấu toàn Task 10e xong.
+- Bước 2 chưa cập nhật database chính/container Docker hoặc frontend. Giao diện
+  số lượt, refresh điểm trên header/lịch sử đã hoàn thành ở
+  [bước 3](task-10-voucher-points-ui.md); chưa đánh dấu toàn Task 10e xong.
 
 Chạy kiểm tra backend bằng TEST_DATABASE_URL có hậu tố `_test` như hướng dẫn
 bước 1. Chưa push nhánh hoặc merge main.

@@ -41,7 +41,7 @@ export default defineConfig({
       cwd: path.resolve(__dirname, "../backend"),
       url: "http://127.0.0.1:3201/products",
       reuseExistingServer: false,
-      timeout: 60000,
+      timeout: 120000,
       env: {
         DATABASE_URL: database,
         PORT: "3201",

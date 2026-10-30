@@ -6,7 +6,8 @@ Cập nhật 30/10/2026. Nhánh `feature/task-10-vouchers`, thư mục chính
 Ân đã chốt bố cục voucher đã áp dụng và bảng tiền dùng chung, đồng thời cho phép
 thêm voucher mẫu để thử và điều chỉnh. Migration không tự kích hoạt mã; ba mã
 mẫu được nạp riêng bằng lệnh trong tài liệu này. [Bước 2 backend lượt dùng và điểm](task-10-voucher-points.md)
-đã triển khai trên nhánh riêng; chưa cập nhật giao diện số lượt/điểm và bản Docker.
+đã triển khai trên nhánh riêng. [Bước 3 giao diện lượt dùng và điểm](task-10-voucher-points-ui.md)
+đã hoàn thành trên `feature/task-10-voucher-points-ui`; chưa cập nhật bản Docker/database chính.
 Các mô tả/kiểm thử bên dưới ghi lại bản voucher trước bước 2; chưa đánh dấu toàn bộ Task 10e hoàn thành.
 
 ## Bố cục và hành vi

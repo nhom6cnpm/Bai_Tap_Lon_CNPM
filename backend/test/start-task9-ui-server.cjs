@@ -7,7 +7,9 @@ async function start() {
   if (!url.pathname.endsWith('_ui_test'))
     throw new Error('UI test server requires a dedicated _ui_test database');
   const { AppModule } = require('../dist/app.module');
-  const app = await NestFactory.create(AppModule, { logger: false });
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn'],
+  });
   const database = app.get(DataSource);
   const [actual] = await database.query('SELECT current_database() AS name');
   if (!actual.name.endsWith('_ui_test')) {

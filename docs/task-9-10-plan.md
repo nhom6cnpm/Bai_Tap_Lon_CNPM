@@ -23,7 +23,7 @@ Checklist triển khai tiếp theo:
        lượt dùng, điểm, yêu cầu hủy; rà soát/siết API hủy cũ.
 2. [x] Backend giữ/chốt/trả lượt và cộng/thu hồi điểm trong transaction; kiểm tra
        đồng thời, gửi lặp và quá hạn trước khi mở giao diện.
-3. [ ] Giao diện voucher còn lượt/đang giữ/ẩn hết lượt; cập nhật điểm và lịch sử.
+3. [x] Giao diện voucher còn lượt/đang giữ/ẩn hết lượt; cập nhật điểm và lịch sử.
 4. [ ] Hủy ngay/yêu cầu hủy/nhân viên duyệt hoặc từ chối; UI khách và admin.
 5. [ ] Hai tab quản trị, bảng pha chế PAID → PREPARING → READY → COMPLETED,
        thông báo READY phía khách.
@@ -38,8 +38,14 @@ nhật Docker trong bước 1.
 Bước 2 đã hoàn thành trên `feature/task-10-voucher-points`: bật policy version 1
 cho đơn mới, nối giữ/chốt/trả lượt và cộng/thu hồi điểm trong transaction hiện có.
 138 unit, 110 PostgreSQL/API và 8 tình huống nạp cấu hình qua. [Chi tiết bước 2](task-10-voucher-points.md).
-Chưa đổi bản Docker/database chính hoặc frontend; tiếp theo là mục 3, hiển thị
-lượt voucher và cập nhật điểm từ API trên giao diện.
+Ở bước 2 chưa đổi bản Docker/database chính hoặc frontend.
+
+Bước 3 đã hoàn thành trên `feature/task-10-voucher-points-ui`: hiển thị lượt
+cá nhân, làm mới điểm trên tài khoản, phân biệt điểm dự kiến/đã cộng/đã thu hồi
+trong lịch sử và chi tiết đơn. Lint, TypeScript và build frontend qua. Bộ UI có
+42 ca qua trong lần chạy chung; hai ca còn lại lỗi chờ chuyển trang trong test,
+đã sửa và chạy lại cả hai qua. [Chi tiết bước 3](task-10-voucher-points-ui.md).
+Chưa cập nhật Docker/database chính; tiếp theo là mục 4, hủy ngay và yêu cầu hủy.
 
 Chi tiết các điểm bổ sung kỹ thuật và dữ liệu cũ ở tài liệu liên kết. Đây là
 phương án triển khai tiếp theo; chưa có các chức năng mới này trên bản Docker.

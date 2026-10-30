@@ -5,6 +5,8 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useOrderClock, useOwnOrder } from "@/hooks/useOrderHistory";
 import { formatDate, orderStatusLabel } from "@/lib/orderUtils";
+import OrderRewards from "./OrderRewards";
+import { useOrderRewardsSync } from "@/hooks/useRewardsProfile";
 import {
   LoginPrompt,
   OrderError,
@@ -27,6 +29,7 @@ export function OrderDetail({
   const query = useOwnOrder(id, confirmation ? false : 3_000);
   const router = useRouter();
   const order = query.data;
+  useOrderRewardsSync(order && !query.isError ? [order] : []);
   const now = useOrderClock(order?.serverTime, query.dataUpdatedAt);
   useEffect(() => {
     if (
@@ -110,6 +113,7 @@ export function OrderDetail({
                   <OrderItems order={order} />
                 </div>
                 <PriceSummary totals={order} />
+                <OrderRewards order={order} />
                 <p className="mt-3 text-sm text-stone-600">
                   Phương thức:{" "}
                   {order.paymentMethod === "WALLET"

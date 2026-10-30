@@ -1,16 +1,17 @@
-'use client';
+"use client";
 
-import Link from 'next/link';
-import { useAuth } from '@/hooks/useAuth';
+import Link from "next/link";
+import { useAuth } from "@/hooks/useAuth";
+import { useRewardsProfile } from "@/hooks/useRewardsProfile";
 
 export default function AuthNav() {
   const { user, isAuthenticated, logout } = useAuth();
-
+  const rewards = useRewardsProfile();
 
   if (isAuthenticated && user) {
     return (
       <div className="flex items-center gap-2 sm:gap-3">
-        {user.role === 'ADMIN' && (
+        {user.role === "ADMIN" && (
           <Link
             href="/admin/payments"
             className="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-900 transition hover:bg-sky-200"
@@ -22,8 +23,26 @@ export default function AuthNav() {
           <span className="max-w-[130px] truncate font-medium text-stone-800 sm:max-w-[180px]">
             {user.email}
           </span>
-          <span className="text-[11px] font-semibold text-amber-700">
+          <span
+            aria-label="Số dư điểm thưởng"
+            title={
+              rewards.isError
+                ? "Chưa cập nhật được điểm thưởng"
+                : "Điểm tích lũy BrewLite"
+            }
+            className="text-[11px] font-semibold text-amber-700"
+          >
             ⭐ {user.loyaltyPoints ?? 0} điểm
+            {rewards.isError && (
+              <button
+                type="button"
+                aria-label="Thử cập nhật điểm"
+                onClick={() => void rewards.refetch()}
+                className="ml-1 underline"
+              >
+                ↻
+              </button>
+            )}
           </span>
         </div>
         <button

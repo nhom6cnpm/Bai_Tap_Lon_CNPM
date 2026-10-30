@@ -23,7 +23,15 @@ export interface OrderItem {
   lineTotal: number;
 }
 
-export interface Order {
+export interface OrderBenefits {
+  benefitsPolicyVersion: 0 | 1;
+  pointsEarned: number;
+  pointsReversed: number;
+  pointsAwardedAt: string | null;
+  pointsReversedAt: string | null;
+}
+
+export interface Order extends OrderBenefits {
   id: string;
   status: OrderStatus;
   total: number;

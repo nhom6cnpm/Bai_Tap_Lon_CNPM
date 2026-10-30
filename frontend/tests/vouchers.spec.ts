@@ -129,6 +129,10 @@ test("select a public voucher and pay the discounted amount through the QR on a 
   ).toBeVisible();
   await reviewAsStaff(browser, request, id);
   await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
+  await expect(page.getByLabel("Số dư điểm thưởng")).toContainText("2 điểm");
+  await expect(page.getByLabel("Điểm thưởng của đơn")).toContainText(
+    "Đã cộng 2 điểm",
+  );
   await expect(page.getByText("Voucher UI10K", { exact: true })).toBeVisible();
   await expect(
     page.getByRole("region", { name: "Tổng kết thanh toán" }),

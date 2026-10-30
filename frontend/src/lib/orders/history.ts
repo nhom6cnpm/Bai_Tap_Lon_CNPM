@@ -1,6 +1,11 @@
 import { clearAuth, getStoredToken } from "@/lib/auth";
 import { getApiBaseUrl } from "@/lib/products";
-import { ORDER_STATUSES, type Order, type OrderItem } from "@/types/order";
+import {
+  ORDER_STATUSES,
+  type Order,
+  type OrderBenefits,
+  type OrderItem,
+} from "@/types/order";
 
 export class OrderApiError extends Error {
   constructor(
@@ -35,9 +40,31 @@ function isItem(value: unknown): value is OrderItem {
     money(value.lineTotal)
   );
 }
-function isOrder(value: unknown): value is Order {
+type OrderWire = Omit<Order, keyof OrderBenefits> & Partial<OrderBenefits>;
+const benefitKeys = [
+  "benefitsPolicyVersion",
+  "pointsEarned",
+  "pointsReversed",
+  "pointsAwardedAt",
+  "pointsReversedAt",
+] as const;
+function validBenefits(value: Record<string, unknown>): boolean {
+  if (benefitKeys.every((key) => value[key] === undefined)) return true;
+  return (
+    (value.benefitsPolicyVersion === 0 || value.benefitsPolicyVersion === 1) &&
+    money(value.pointsEarned) &&
+    money(value.pointsReversed) &&
+    (value.pointsAwardedAt === null || date(value.pointsAwardedAt)) &&
+    (value.pointsReversedAt === null || date(value.pointsReversedAt)) &&
+    (value.pointsEarned === 0 || date(value.pointsAwardedAt)) &&
+    (value.pointsReversed === 0 ||
+      (date(value.pointsAwardedAt) && date(value.pointsReversedAt)))
+  );
+}
+function isOrder(value: unknown): value is OrderWire {
   return (
     record(value) &&
+    validBenefits(value) &&
     typeof value.id === "string" &&
     value.id.length > 0 &&
     ORDER_STATUSES.some((status) => status === value.status) &&
@@ -59,6 +86,17 @@ function isOrder(value: unknown): value is Order {
     Array.isArray(value.items) &&
     value.items.every(isItem)
   );
+}
+
+function withBenefits(order: OrderWire): Order {
+  return {
+    ...order,
+    benefitsPolicyVersion: order.benefitsPolicyVersion ?? 0,
+    pointsEarned: order.pointsEarned ?? 0,
+    pointsReversed: order.pointsReversed ?? 0,
+    pointsAwardedAt: order.pointsAwardedAt ?? null,
+    pointsReversedAt: order.pointsReversedAt ?? null,
+  };
 }
 
 async function readOrders(
@@ -91,7 +129,7 @@ export async function getMyOrders(signal?: AbortSignal): Promise<Order[]> {
   const data = await readOrders("/orders/me", signal);
   if (!Array.isArray(data) || !data.every(isOrder))
     throw new Error("Dữ liệu đơn hàng chưa hợp lệ. Vui lòng thử lại.");
-  return data;
+  return data.map(withBenefits);
 }
 
 export async function getMyOrder(
@@ -101,5 +139,5 @@ export async function getMyOrder(
   const data = await readOrders(`/orders/${encodeURIComponent(id)}`, signal);
   if (!isOrder(data) || data.id !== id)
     throw new Error("Dữ liệu đơn hàng chưa hợp lệ. Vui lòng thử lại.");
-  return data;
+  return withBenefits(data);
 }

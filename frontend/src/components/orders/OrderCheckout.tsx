@@ -1,5 +1,6 @@
 "use client";
 import PriceSummary from "@/components/PriceSummary";
+import OrderRewards from "./OrderRewards";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -154,6 +155,7 @@ export function OrderCheckout({ id }: { id: string }) {
           Mã đơn: <strong className="text-stone-900">{id}</strong>
         </p>
         <PriceSummary totals={order} />
+        <OrderRewards order={order} compact />
         <p
           role="status"
           className={`mt-4 text-sm font-semibold ${payable ? "text-stone-600" : "text-red-700"}`}

@@ -11,6 +11,7 @@ import {
   toppingLabel,
 } from "@/lib/orderUtils";
 import { OrderApiError } from "@/lib/orders/history";
+import OrderRewards from "./OrderRewards";
 
 export const primaryButton =
   "inline-flex min-h-11 items-center justify-center rounded-full bg-amber-800 px-5 py-2 text-center text-sm font-semibold text-white hover:bg-amber-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-800 disabled:opacity-50";
@@ -173,6 +174,7 @@ export function OrderCard({
               Đã giảm {formatPrice(order.discount)}
             </p>
           )}
+          <OrderRewards order={order} compact />
         </div>
       </div>
       {(order.status === "PENDING" || order.status === "PAYMENT_FAILED") && (

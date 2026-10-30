@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useOrderClock, useOrderHistory } from "@/hooks/useOrderHistory";
 import { isActive } from "@/lib/orderUtils";
+import { useOrderRewardsSync } from "@/hooks/useRewardsProfile";
 import {
   LoginPrompt,
   OrderCard,
@@ -16,6 +17,7 @@ export function OrderHistory() {
   const query = useOrderHistory();
   const [filter, setFilter] = useState("all");
   const orders = query.data ?? [];
+  useOrderRewardsSync(query.authenticated && !query.isError ? orders : []);
   const now = useOrderClock(orders[0]?.serverTime, query.dataUpdatedAt);
   const completed = orders.filter(
     (order) => order.status === "COMPLETED",
