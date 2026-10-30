@@ -82,8 +82,7 @@ export function OrderProgress({ order }: { order: Order }) {
   const index = ["PAID", "PREPARING", "READY", "COMPLETED"].indexOf(
     order.status,
   );
-  if (index < 0)
-    return <p className="text-sm text-stone-600">{orderStatusLabel(order)}</p>;
+  if (index < 0) return null;
   return (
     <ol
       aria-label="Tiến trình đơn hàng"
