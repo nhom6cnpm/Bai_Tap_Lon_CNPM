@@ -7,7 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
-import { DataSource, EntityManager, In, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 import { InventoryService } from '../inventory/inventory.service';
 import { VouchersService } from '../vouchers/vouchers.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -30,6 +36,10 @@ import { Payment } from '../payments/entities/payment.entity';
 import { OrderBenefitsService } from './order-benefits.service';
 import { BENEFITS_POLICY_VERSIONS } from './benefits-policy';
 import { BankLedgerService } from '../mock-bank/bank-ledger.service';
+import { OrderRequestKey } from './order-request-key.entity';
+import { orderRequestHash } from './order-request-hash';
+
+const UNIQUE_VIOLATION = '23505';
 import {
   PREPARATION_TARGETS,
   type PreparationTarget,
@@ -55,70 +65,130 @@ export class OrdersService {
     return new Date(rows[0].now);
   }
 
+  private toCreateResponse(order: Order): CreateOrderResponseDto {
+    return {
+      message: 'Tạo đơn hàng thành công',
+      orderId: order.id,
+      total: order.total,
+      subtotal: order.subtotal,
+      discount: order.discount,
+      voucherCode: order.voucherCode,
+      voucherTitle: order.voucherTitle,
+      status: order.status,
+      createdAt: order.createdAt,
+      expiresAt: order.expiresAt,
+    };
+  }
+
+  /** Same key again: the first order, never a second one; another cart: refused. */
+  private async replay(
+    previous: OrderRequestKey,
+    requestHash: string,
+    manager: EntityManager,
+  ): Promise<Order> {
+    if (previous.requestHash !== requestHash)
+      throw new ConflictException(
+        'Idempotency-Key đã được dùng cho một giỏ hàng khác',
+      );
+    const order = await manager
+      .getRepository(Order)
+      .findOneBy({ id: previous.orderId });
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    return order;
+  }
+
+  /**
+   * POST /orders. With an Idempotency-Key (required by the HTTP API), sending
+   * the same request twice creates one order: the key is claimed first inside
+   * the transaction, so a concurrent duplicate waits on the primary key and
+   * then returns the order of the request that won.
+   */
   async createOrder(
     userId: string,
     dto: CreateOrderDto,
+    idempotencyKey?: string,
   ): Promise<CreateOrderResponseDto> {
-    const savedOrder = await this.dataSource.transaction(async (manager) => {
-      await this.benefits.requireUser(manager, userId);
-      const now = await this.databaseNow(manager);
-      const orderId = `ORD-${randomUUID()}`;
-      const { subtotal, lines } = await priceOrderItems(manager, dto.items);
-      const items = lines.map((line, index) =>
-        manager.getRepository(OrderItem).create({
-          ...line,
-          id: `${orderId}-${index + 1}`,
-          orderId,
-        }),
-      );
-      const order = manager.getRepository(Order).create({
-        id: orderId,
-        userId,
-        status: 'PENDING',
-        benefitsPolicyVersion:
-          BENEFITS_POLICY_VERSIONS.VOUCHER_QUOTAS_AND_POINTS,
-        subtotal,
-        discount: 0,
-        total: subtotal,
-        items,
-        createdAt: now,
-        expiresAt: new Date(
-          now.getTime() +
-            parsePaymentTimeoutMinutes(
-              this.configService.get<string>('ORDER_PAYMENT_TIMEOUT_MINUTES'),
-            ) *
-              60_000,
-        ),
-      });
-      await manager.save(Order, order);
-      await this.ensureInventoryReservation(order, manager);
-      // Validate after inventory waits; an expired voucher rolls back the whole order.
-      Object.assign(
-        order,
-        await this.vouchersService.apply(
-          manager,
+    if (
+      idempotencyKey !== undefined &&
+      (!idempotencyKey.trim() || idempotencyKey.length > 128)
+    )
+      throw new BadRequestException('Idempotency-Key phải có 1–128 ký tự');
+    const requestHash = orderRequestHash(dto);
+    try {
+      const savedOrder = await this.dataSource.transaction(async (manager) => {
+        await this.benefits.requireUser(manager, userId);
+        const keys = manager.getRepository(OrderRequestKey);
+        if (idempotencyKey) {
+          const previous = await keys.findOneBy({ userId, idempotencyKey });
+          if (previous) return this.replay(previous, requestHash, manager);
+        }
+        const now = await this.databaseNow(manager);
+        const orderId = `ORD-${randomUUID()}`;
+        // Claim the key before any stock is reserved
+        if (idempotencyKey)
+          await keys.insert({ userId, idempotencyKey, orderId, requestHash });
+        const { subtotal, lines } = await priceOrderItems(manager, dto.items);
+        const items = lines.map((line, index) =>
+          manager.getRepository(OrderItem).create({
+            ...line,
+            id: `${orderId}-${index + 1}`,
+            orderId,
+          }),
+        );
+        const order = manager.getRepository(Order).create({
+          id: orderId,
+          userId,
+          status: 'PENDING',
+          benefitsPolicyVersion:
+            BENEFITS_POLICY_VERSIONS.VOUCHER_QUOTAS_AND_POINTS,
           subtotal,
-          dto.voucherCode,
-          await this.databaseNow(manager),
-          true,
-        ),
-      );
-      await this.benefits.reserve(order, manager);
-      await manager.save(Order, order);
-      return order;
-    });
-    return {
-      message: 'Tạo đơn hàng thành công',
-      orderId: savedOrder.id,
-      total: savedOrder.total,
-      subtotal: savedOrder.subtotal,
-      discount: savedOrder.discount,
-      voucherCode: savedOrder.voucherCode,
-      voucherTitle: savedOrder.voucherTitle,
-      status: savedOrder.status,
-      createdAt: savedOrder.createdAt,
-      expiresAt: savedOrder.expiresAt,
-    };
+          discount: 0,
+          total: subtotal,
+          items,
+          createdAt: now,
+          expiresAt: new Date(
+            now.getTime() +
+              parsePaymentTimeoutMinutes(
+                this.configService.get<string>('ORDER_PAYMENT_TIMEOUT_MINUTES'),
+              ) *
+                60_000,
+          ),
+        });
+        await manager.save(Order, order);
+        await this.ensureInventoryReservation(order, manager);
+        // Validate after inventory waits; an expired voucher rolls back the whole order.
+        Object.assign(
+          order,
+          await this.vouchersService.apply(
+            manager,
+            subtotal,
+            dto.voucherCode,
+            await this.databaseNow(manager),
+            true,
+          ),
+        );
+        await this.benefits.reserve(order, manager);
+        await manager.save(Order, order);
+        return order;
+      });
+      return this.toCreateResponse(savedOrder);
+    } catch (error) {
+      // A concurrent request with the same key committed first
+      if (
+        idempotencyKey &&
+        error instanceof QueryFailedError &&
+        (error.driverError as { code?: string })?.code === UNIQUE_VIOLATION
+      ) {
+        const winner = await this.dataSource
+          .getRepository(OrderRequestKey)
+          .findOneBy({ userId, idempotencyKey });
+        if (winner)
+          return this.toCreateResponse(
+            await this.replay(winner, requestHash, this.dataSource.manager),
+          );
+      }
+      throw error;
+    }
   }
 
   findById(orderId: string): Promise<Order | null> {

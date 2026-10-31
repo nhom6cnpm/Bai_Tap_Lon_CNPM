@@ -10,13 +10,8 @@ import {
   PaymentApiError,
   type PaymentDetails,
 } from "@/lib/payments/api";
-import {
-  clearActiveCheckout,
-  getCheckout,
-  getCartFingerprint,
-  removeAttempt,
-} from "@/lib/payments/storage";
-import { useCart } from "@/store/useCart";
+import { removeAttempt } from "@/lib/payments/storage";
+import { clearCartIfPaid } from "@/hooks/useClearPaidCart";
 import { useOrderClock, useOwnOrder } from "@/hooks/useOrderHistory";
 import OrderCancellation from "@/components/orders/OrderCancellation";
 import { useAuth } from "@/hooks/useAuth";
@@ -103,13 +98,7 @@ function PaymentSession({ paymentId }: { paymentId: string }) {
       ) {
         // Paid: only now is the cart emptied
         finished.current = true;
-        const checkout = getCheckout(payment.orderId);
-        if (
-          checkout?.cartFingerprint ===
-          getCartFingerprint(useCart.getState().items)
-        )
-          useCart.getState().clear();
-        clearActiveCheckout(payment.orderId);
+        clearCartIfPaid({ id: payment.orderId, status: "PAID" });
         removeAttempt(payment.orderId, payment.method);
         router.replace(
           `/orders/${encodeURIComponent(payment.orderId)}${payment.orderStatus === "PAID" ? "/confirmation" : ""}`,

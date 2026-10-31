@@ -12,6 +12,7 @@ import { OrderInventoryReservation } from './src/orders/order-inventory-reservat
 import { Voucher } from './src/vouchers/voucher.entity';
 import { PaymentRequestKey } from './src/payments/entities/payment-request-key.entity';
 import { BankTransaction } from './src/mock-bank/bank-transaction.entity';
+import { OrderRequestKey } from './src/orders/order-request-key.entity';
 import { VoucherUserQuota } from './src/vouchers/voucher-user-quota.entity';
 import { VoucherUsage } from './src/vouchers/voucher-usage.entity';
 
@@ -35,6 +36,7 @@ export const AppDataSource = new DataSource({
     VoucherUserQuota,
     VoucherUsage,
     BankTransaction,
+    OrderRequestKey,
   ],
   migrations: ['src/migrations/*{.ts,.js}'],
 });

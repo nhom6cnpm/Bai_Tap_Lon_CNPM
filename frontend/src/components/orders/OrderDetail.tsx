@@ -11,6 +11,7 @@ import OrderRewards from "./OrderRewards";
 import OrderCancellation from "./OrderCancellation";
 import ReadyOrdersNotice from "./ReadyOrdersNotice";
 import { useOrderRewardsSync } from "@/hooks/useRewardsProfile";
+import { useClearPaidCart } from "@/hooks/useClearPaidCart";
 import {
   LoginPrompt,
   OrderError,
@@ -34,6 +35,8 @@ export function OrderDetail({
   const router = useRouter();
   const order = query.data;
   useOrderRewardsSync(order && !query.isError ? [order] : []);
+  // Paid while the customer was elsewhere: empty the cart it was ordered from
+  useClearPaidCart(order && !query.isError ? [order] : undefined);
   const now = useOrderClock(order?.serverTime, query.dataUpdatedAt);
   useEffect(() => {
     if (

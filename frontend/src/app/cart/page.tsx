@@ -9,11 +9,14 @@ import { formatPrice } from "@/lib/formatPrice";
 import { toppingOptions } from "@/lib/productOptions";
 import { getStoredToken } from "@/lib/auth";
 import { submitOrderApi } from "@/lib/orders/orders";
+import { useClearPaidCart } from "@/hooks/useClearPaidCart";
 import {
   clearActiveCheckout,
   getActiveCheckout,
   getCartFingerprint,
   saveCheckout,
+  getOrderRequestKey,
+  clearOrderRequestKey,
 } from "@/lib/payments/storage";
 import { useOwnOrder, useOrderClock } from "@/hooks/useOrderHistory";
 import { getMyOrder, OrderApiError } from "@/lib/orders/history";
@@ -44,6 +47,13 @@ export default function CartPage() {
       ? getActiveCheckout(getCartFingerprint(items))
       : null;
   const activeOrder = useOwnOrder(candidate?.orderId ?? "");
+  // The order of this cart was paid (staff confirmed while the customer was
+  // elsewhere): empty the cart as soon as it is opened
+  useClearPaidCart(
+    candidate && activeOrder.data && !activeOrder.isError
+      ? [activeOrder.data]
+      : undefined,
+  );
   const now = useOrderClock(
     activeOrder.data?.serverTime,
     activeOrder.dataUpdatedAt,
@@ -113,7 +123,12 @@ export default function CartPage() {
           "Giỏ hàng vượt số ly còn bán. Vui lòng giảm số lượng hoặc đổi lựa chọn.",
         );
       }
-      const data = await submitOrderApi(items, voucherCode || undefined);
+      const data = await submitOrderApi(
+        items,
+        voucherCode || undefined,
+        getOrderRequestKey(fingerprint, voucherCode || ""),
+      );
+      clearOrderRequestKey();
       saveCheckout({
         orderId: data.orderId,
         total: data.total,

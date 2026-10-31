@@ -1,6 +1,7 @@
 import type { PaymentMethod } from "./api";
 import { getStoredToken, getStoredUser } from "@/lib/auth";
 import { getLineKey, type CartItem } from "@/store/useCart";
+import { newIdempotencyKey } from "@/lib/idempotency";
 
 export interface CheckoutSnapshot {
   orderId: string;
@@ -27,6 +28,13 @@ export interface PaymentSession {
 
 const checkoutKey = (orderId: string) => `brewlite-checkout:${orderId}`;
 const activeCheckoutKey = "brewlite-active-checkout";
+const orderAttemptKey = "brewlite-order-attempt";
+
+interface OrderAttempt {
+  cartFingerprint: string;
+  voucherCode: string;
+  idempotencyKey: string;
+}
 const attemptKey = (orderId: string, method: PaymentMethod) =>
   `brewlite-payment-attempt:${orderId}:${method}`;
 const sessionKey = (paymentId: string) =>
@@ -62,6 +70,38 @@ function writeStored(key: string, value: unknown): void {
   const scoped = scopedKey(key);
   if (typeof window !== "undefined" && scoped)
     localStorage.setItem(scoped, JSON.stringify(value));
+}
+
+/**
+ * Idempotency-Key for POST /orders. Pressing "Đặt hàng" again for the same cart
+ * (double click, lost response, network retry) reuses the key, so the backend
+ * returns the same order instead of creating a second one.
+ */
+export function getOrderRequestKey(
+  cartFingerprint: string,
+  voucherCode: string,
+): string {
+  const saved = readStored<OrderAttempt>(orderAttemptKey);
+  if (
+    saved?.cartFingerprint === cartFingerprint &&
+    saved.voucherCode === voucherCode &&
+    typeof saved.idempotencyKey === "string" &&
+    saved.idempotencyKey.length > 0
+  )
+    return saved.idempotencyKey;
+  const idempotencyKey = newIdempotencyKey();
+  writeStored(orderAttemptKey, {
+    cartFingerprint,
+    voucherCode,
+    idempotencyKey,
+  } satisfies OrderAttempt);
+  return idempotencyKey;
+}
+
+/** The order exists now: the next order (even with the same cart) gets a new key. */
+export function clearOrderRequestKey(): void {
+  const scoped = scopedKey(orderAttemptKey);
+  if (typeof window !== "undefined" && scoped) localStorage.removeItem(scoped);
 }
 
 export function saveCheckout(snapshot: CheckoutSnapshot): void {
