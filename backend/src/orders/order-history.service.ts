@@ -138,6 +138,101 @@ export class OrderHistoryService {
     return this.toResponses(orders);
   }
 
+  private async emailsOf(userIds: readonly string[]) {
+    const ids = [...new Set(userIds)].filter((id) => isUUID(id));
+    if (!ids.length) return new Map<string, string>();
+    const users = await this.users.find({
+      where: { id: In(ids) },
+      select: { id: true, email: true },
+    });
+    return new Map(users.map((user) => [user.id, user.email]));
+  }
+
+  /** GET /admin/orders/history — every order (any status), newest first. */
+  async findForAdminHistory(query: {
+    status?: string;
+    q?: string;
+    page?: number | string;
+    pageSize?: number | string;
+  }) {
+    const page = Math.max(1, Number(query.page) || 1);
+    const pageSize = Math.min(50, Math.max(1, Number(query.pageSize) || 20));
+    const builder = this.orders
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.items', 'items')
+      .leftJoin(User, 'u', 'u.id::text = o.userId')
+      .orderBy('o.createdAt', 'DESC')
+      .addOrderBy('o.id', 'DESC')
+      .skip((page - 1) * pageSize)
+      .take(pageSize);
+    if (query.status) builder.andWhere('o.status = :status', query);
+    const search = query.q?.trim();
+    if (search)
+      builder.andWhere('(o.id ILIKE :search OR u.email ILIKE :search)', {
+        search: `%${search.replace(/[%_\\]/g, (c) => `\\${c}`)}%`,
+      });
+    const [orders, total] = await builder.getManyAndCount();
+    const [responses, emails] = await Promise.all([
+      this.toResponses(orders),
+      this.emailsOf(orders.map((order) => order.userId)),
+    ]);
+    return {
+      items: responses.map((response, index) => ({
+        ...response,
+        customerEmail: emails.get(orders[index].userId) ?? null,
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
+  /** GET /admin/orders/:id/detail — order + payments + mock bank statement. */
+  async findAdminDetail(id: string) {
+    const order = await this.orders.findOne({
+      where: { id },
+      relations: { items: true },
+    });
+    if (!order) throw new NotFoundException('Không tìm thấy đơn hàng');
+    const [[response], payments, statement] = await Promise.all([
+      this.toResponses([order]),
+      this.payments.find({
+        where: { orderId: id },
+        order: { createdAt: 'ASC', id: 'ASC' },
+      }),
+      this.ledger.list(id),
+    ]);
+    const emails = await this.emailsOf([
+      order.userId,
+      ...payments.flatMap((payment) =>
+        payment.reviewedBy ? [payment.reviewedBy] : [],
+      ),
+      ...(order.cancelReviewedBy ? [order.cancelReviewedBy] : []),
+    ]);
+    return {
+      ...response,
+      customerEmail: emails.get(order.userId) ?? null,
+      cancelReviewedByEmail: order.cancelReviewedBy
+        ? (emails.get(order.cancelReviewedBy) ?? null)
+        : null,
+      payments: payments.map((payment) => ({
+        paymentId: payment.id,
+        method: payment.method,
+        status: payment.status,
+        amount: payment.amount,
+        createdAt: payment.createdAt,
+        receivedAt: payment.receivedAt,
+        reviewedAt: payment.reviewedAt,
+        reviewedByEmail: payment.reviewedBy
+          ? (emails.get(payment.reviewedBy) ?? null)
+          : null,
+        reviewNote: payment.reviewNote,
+      })),
+      // Oldest first, as on a bank statement
+      bankTransactions: [...statement].reverse(),
+    };
+  }
+
   async findForAdminById(id: string): Promise<OrderHistoryResponseDto> {
     const order = await this.orders.findOne({
       where: { id },

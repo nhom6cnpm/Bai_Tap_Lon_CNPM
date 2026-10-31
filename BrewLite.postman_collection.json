@@ -640,6 +640,76 @@
 					}
 				}
 			]
+		},
+		{
+			"name": "Admin - Lịch sử đơn & Nguyên liệu",
+			"item": [
+				{
+					"name": "Ingredient Table (stock, reserved, cups left)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/ingredients"
+					}
+				},
+				{
+					"name": "Order History (all statuses, newest first)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/orders/history?page=1&pageSize=20"
+					}
+				},
+				{
+					"name": "Order History - Cancelled, search by code/email",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/orders/history?status=CANCELLED&q=<ORDER_ID_OR_EMAIL>"
+					}
+				},
+				{
+					"name": "Order Detail (payments + bank statement)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <ADMIN_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/orders/<ORDER_ID>/detail"
+					}
+				},
+				{
+					"name": "Ingredient Table As Customer (403)",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							}
+						],
+						"url": "http://localhost:3001/admin/ingredients"
+					}
+				}
+			]
 		}
 	]
 }

@@ -1,4 +1,5 @@
 "use client";
+import AdminNav from "@/components/admin/AdminNav";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -89,24 +90,7 @@ function CancellationBoard({ token }: { token: string }) {
   const now = useOrderClock(query.data?.[0]?.serverTime, query.dataUpdatedAt);
   return (
     <section className="mx-auto w-full max-w-6xl px-4 py-8">
-      <nav
-        aria-label="Quản trị"
-        className="mb-6 flex flex-wrap gap-3 text-sm font-semibold"
-      >
-        <Link
-          href="/admin/payments"
-          className="rounded-full border border-stone-200 px-4 py-2"
-        >
-          Thanh toán
-        </Link>
-        <Link
-          href="/admin/orders"
-          aria-current="page"
-          className="rounded-full bg-amber-100 px-4 py-2 text-amber-900"
-        >
-          Đơn hàng
-        </Link>
-      </nav>
+      <AdminNav />
       <h1 className="mb-6 text-2xl font-bold">Quản lý đơn hàng</h1>
       <section
         id="cancel-requests"

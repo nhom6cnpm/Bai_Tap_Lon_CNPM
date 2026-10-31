@@ -122,6 +122,15 @@ chung cho mọi tài khoản, mỗi tài khoản 3 lần/mã, hạn 30 ngày t�
 `NHOM15K` (−15.000đ, đơn từ 100.000đ) và mã ẩn phải gõ tay `NHAP7K` (−7.000đ, đơn từ
 35.000đ). Hết hạn thì gia hạn bằng `npm run vouchers:seed -- --update` trong `backend`.
 
+**Trang nhân viên** (đăng nhập tài khoản `ADMIN`) có 4 tab:
+
+| Tab | Đường dẫn | Dùng để |
+|---|---|---|
+| Thanh toán | `/admin/payments` | Xác nhận / từ chối thanh toán, tab **Sao kê** (tiền vào, hoàn tiền) |
+| Đơn hàng | `/admin/orders` | Duyệt yêu cầu hủy, bảng pha chế `PAID → PREPARING → READY → COMPLETED` |
+| Lịch sử đơn | `/admin/history` | Mọi đơn, lọc theo trạng thái, tìm theo mã đơn/email; chi tiết đơn có phiên thanh toán, sao kê, ai duyệt |
+| Nguyên liệu | `/admin/ingredients` | Tồn kho từng nguyên liệu, lượng đang giữ cho đơn chờ thanh toán, đủ cho bao nhiêu ly, cảnh báo **sắp hết** (dưới 10 ly), số ly còn bán của từng món (chỉ xem) |
+
 Trang nhân viên: http://localhost:3000/admin/payments. Docker có tài khoản phát triển
 mặc định `admin@brewlite.vn` / `admin123`; có thể đổi qua `ADMIN_EMAIL` và
 `ADMIN_PASSWORD`. Với tài khoản đã tồn tại, seed giữ mật khẩu cũ. Chạy local cần
@@ -229,6 +238,9 @@ Chạy `docker compose up --build`, mở http://localhost:3000. Tài khoản nh�
 - [ ] **Thanh toán lỗi**: nhân viên **Từ chối** → `PAYMENT_FAILED`, tiền được hoàn, giỏ giữ nguyên, khách bấm "Thử lại".
 - [ ] **Lịch sử đơn** (`/orders`): thấy đơn và trạng thái.
 - [ ] **Pha chế** (`/admin/orders`): `PAID → PREPARING → READY → COMPLETED`; khách được báo khi món sẵn sàng.
+- [ ] **Nguyên liệu** (`/admin/ingredients`): đặt 1 ly Cà phê sữa → Cà phê giảm 20 g và hiện ở cột "đang giữ";
+      hủy đơn → nguyên liệu trả về; món nào hết nguyên liệu hiện "Hết".
+- [ ] **Lịch sử đơn** (`/admin/history`): tìm lại một đơn đã hủy/bị từ chối → chi tiết có dòng "Hoàn tiền" trong sao kê.
 - [ ] **Hủy đơn**: đơn chưa trả tiền hủy ngay; đơn `PAID` gửi yêu cầu → nhân viên đồng ý → `CANCELLED`,
       tự hoàn tiền (Sao kê có dòng "Hoàn tiền"), trả lượt voucher, thu hồi điểm.
 - [ ] **Bảo toàn dữ liệu**: `docker compose down` rồi `up` — tài khoản và đơn vẫn còn (volume `pgdata`).

@@ -10,6 +10,12 @@ import { RecipeItem } from './recipe-item.entity';
 import { ToppingRecipe } from './topping-recipe.entity';
 import { selectionAvailability } from './selection-availability';
 import {
+  inventoryOverview,
+  type InventoryOverview,
+  type IngredientRow,
+  type ProductRow,
+} from './ingredient-overview';
+import {
   type IngredientAmounts,
   type OrderLine,
   type RecipeBook,
@@ -43,6 +49,41 @@ export class InventoryService {
     @InjectRepository(ToppingRecipe)
     private readonly toppingRecipeRepository: Repository<ToppingRecipe>,
   ) {}
+
+  /** GET /admin/ingredients — stock left, held for unpaid orders, cups left. */
+  async getAdminOverview(): Promise<InventoryOverview> {
+    const [book, ingredients, products, reservedRows] = await Promise.all([
+      this.getRecipeBook(),
+      this.ingredientRepository.find({ order: { id: 'ASC' } }),
+      this.ingredientRepository.manager.query<ProductRow[]>(
+        'SELECT id, name FROM products ORDER BY id',
+      ),
+      // Reservations of orders still waiting for payment (not yet released)
+      this.ingredientRepository.manager.query<
+        Array<{ ingredientId: string; reserved: string }>
+      >(
+        `SELECT r."ingredientId", SUM(r.amount) AS reserved
+           FROM order_ingredient_reservations r
+           JOIN orders o ON o.id = r."orderId"
+          WHERE o.status IN ('PENDING', 'PAYMENT_FAILED')
+            AND o."inventoryReleasedAt" IS NULL
+          GROUP BY r."ingredientId"`,
+      ),
+    ]);
+    return inventoryOverview(
+      book,
+      ingredients.map((row): IngredientRow => ({
+        id: row.id,
+        name: row.name,
+        unit: row.unit,
+        quantity: row.quantity,
+      })),
+      products,
+      new Map(
+        reservedRows.map((row) => [row.ingredientId, Number(row.reserved)]),
+      ),
+    );
+  }
 
   async getRecipeBook(manager?: EntityManager): Promise<RecipeBook> {
     const [recipes, toppingRecipes] = await Promise.all([

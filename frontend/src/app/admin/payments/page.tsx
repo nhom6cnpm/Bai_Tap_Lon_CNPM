@@ -1,5 +1,6 @@
 "use client";
 
+import AdminNav from "@/components/admin/AdminNav";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
@@ -216,24 +217,7 @@ function AdminPaymentsBoard() {
 
   return (
     <section className="mx-auto max-w-6xl px-4 py-8">
-      <nav
-        aria-label="Quản trị"
-        className="mb-6 flex flex-wrap gap-3 text-sm font-semibold"
-      >
-        <Link
-          href="/admin/payments"
-          aria-current="page"
-          className="rounded-full bg-amber-100 px-4 py-2 text-amber-900"
-        >
-          Thanh toán
-        </Link>
-        <Link
-          href="/admin/orders"
-          className="rounded-full border border-stone-200 px-4 py-2"
-        >
-          Đơn hàng
-        </Link>
-      </nav>
+      <AdminNav />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-sm font-semibold uppercase tracking-widest text-amber-800">
