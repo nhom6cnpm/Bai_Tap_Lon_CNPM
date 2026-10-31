@@ -1,5 +1,6 @@
 "use client";
 import PriceSummary from "@/components/PriceSummary";
+import { newIdempotencyKey } from "@/lib/idempotency";
 import OrderRewards from "./OrderRewards";
 import OrderCancellation from "./OrderCancellation";
 import Link from "next/link";
@@ -29,13 +30,6 @@ import {
   primaryButton,
   secondaryButton,
 } from "./OrderParts";
-
-function newIdempotencyKey(): string {
-  if (crypto.randomUUID) return crypto.randomUUID();
-  return Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
-}
 
 export function OrderCheckout({ id }: { id: string }) {
   const query = useOwnOrder(id);

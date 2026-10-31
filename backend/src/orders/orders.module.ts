@@ -14,6 +14,7 @@ import { VouchersModule } from '../vouchers/vouchers.module';
 import { OrderBenefitsService } from './order-benefits.service';
 import { AdminOrdersController } from './admin-orders.controller';
 import { BankLedgerModule } from '../mock-bank/bank-ledger.module';
+import { OrderRequestKey } from './order-request-key.entity';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { BankLedgerModule } from '../mock-bank/bank-ledger.module';
       OrderInventoryReservation,
       Payment,
       User,
+      OrderRequestKey,
     ]),
     InventoryModule,
     VouchersModule,

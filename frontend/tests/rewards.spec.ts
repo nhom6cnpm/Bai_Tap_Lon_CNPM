@@ -54,7 +54,10 @@ async function prepare(context: BrowserContext, auth: AuthResponse) {
 }
 async function reserve(request: APIRequestContext, auth: AuthResponse) {
   const response = await request.post(`${api}/orders`, {
-    headers: { Authorization: `Bearer ${auth.access_token}` },
+    headers: {
+      Authorization: `Bearer ${auth.access_token}`,
+      "Idempotency-Key": randomUUID(),
+    },
     data: {
       items: [{ productId: "1", size: "S", toppingIds: [], qty: 1 }],
       voucherCode: "UI10K",

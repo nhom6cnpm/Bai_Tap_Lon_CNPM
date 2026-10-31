@@ -14,6 +14,8 @@ import {
   getActiveCheckout,
   getCartFingerprint,
   saveCheckout,
+  getOrderRequestKey,
+  clearOrderRequestKey,
 } from "@/lib/payments/storage";
 import { useOwnOrder, useOrderClock } from "@/hooks/useOrderHistory";
 import { getMyOrder, OrderApiError } from "@/lib/orders/history";
@@ -113,7 +115,12 @@ export default function CartPage() {
           "Giỏ hàng vượt số ly còn bán. Vui lòng giảm số lượng hoặc đổi lựa chọn.",
         );
       }
-      const data = await submitOrderApi(items, voucherCode || undefined);
+      const data = await submitOrderApi(
+        items,
+        voucherCode || undefined,
+        getOrderRequestKey(fingerprint, voucherCode || ""),
+      );
+      clearOrderRequestKey();
       saveCheckout({
         orderId: data.orderId,
         total: data.total,

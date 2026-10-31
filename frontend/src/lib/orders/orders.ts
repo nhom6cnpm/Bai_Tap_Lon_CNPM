@@ -18,7 +18,8 @@ const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
 export async function submitOrderApi(
   items: CartItem[],
-  voucherCode?: string,
+  voucherCode: string | undefined,
+  idempotencyKey: string,
 ): Promise<CreateOrderResponse> {
   const token = getStoredToken();
   if (!token) {
@@ -42,6 +43,8 @@ export async function submitOrderApi(
       "Content-Type": "application/json",
       Accept: "application/json",
       Authorization: `Bearer ${token}`,
+      // Same key on a retry: the backend returns the same order (no duplicate)
+      "Idempotency-Key": idempotencyKey,
     },
     body: JSON.stringify(orderPayload),
   });

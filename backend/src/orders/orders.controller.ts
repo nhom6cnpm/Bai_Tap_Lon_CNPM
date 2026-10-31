@@ -8,6 +8,8 @@ import {
   HttpCode,
   Get,
   Header,
+  Headers,
+  BadRequestException,
 } from '@nestjs/common';
 import { OrdersService } from './orders.service';
 import { CreateOrderDto } from './dto/create-order.dto';
@@ -60,11 +62,19 @@ export class OrdersController {
     return this.history.findOwnById(req.user.userId, id);
   }
 
+  // Idempotency-Key is required: sending the same request twice creates one order
   @Post()
   async create(
     @Req() req: AuthenticatedRequest,
     @Body() createOrderDto: CreateOrderDto,
+    @Headers('idempotency-key') idempotencyKey?: string,
   ) {
-    return this.ordersService.createOrder(req.user.userId, createOrderDto);
+    if (!idempotencyKey?.trim())
+      throw new BadRequestException('Thiếu header Idempotency-Key');
+    return this.ordersService.createOrder(
+      req.user.userId,
+      createOrderDto,
+      idempotencyKey,
+    );
   }
 }

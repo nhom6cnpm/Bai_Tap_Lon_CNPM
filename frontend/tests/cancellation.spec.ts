@@ -61,7 +61,7 @@ async function order(
 ) {
   const headers = { Authorization: `Bearer ${auth.access_token}` };
   const response = await request.post(`${api}/orders`, {
-    headers,
+    headers: { ...headers, "Idempotency-Key": randomUUID() },
     data: { items: [item], voucherCode: "UI10K" },
   });
   expect(response.ok()).toBe(true);

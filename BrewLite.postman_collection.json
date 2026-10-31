@@ -94,6 +94,10 @@
 							{
 								"key": "Authorization",
 								"value": "Bearer {{task10dToken}}"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}"
 							}
 						],
 						"url": "http://localhost:3001/orders",
@@ -282,6 +286,56 @@
 							{
 								"key": "Authorization",
 								"value": "Bearer <YOUR_JWT_TOKEN>"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"productId\": \"3\",\n            \"size\": \"M\",\n            \"toppingIds\": [\n                \"cream\",\n                \"pearls\"\n            ],\n            \"qty\": 1\n        },\n        {\n            \"productId\": \"4\",\n            \"size\": \"L\",\n            \"toppingIds\": [],\n            \"qty\": 2\n        }\n    ]\n}"
+						},
+						"url": "http://localhost:3001/orders"
+					}
+				},
+				{
+					"name": "Create Order (Replay Same Idempotency-Key - same orderId, no duplicate)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "demo-order-key-1"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"items\": [\n        {\n            \"productId\": \"3\",\n            \"size\": \"M\",\n            \"toppingIds\": [\n                \"cream\",\n                \"pearls\"\n            ],\n            \"qty\": 1\n        },\n        {\n            \"productId\": \"4\",\n            \"size\": \"L\",\n            \"toppingIds\": [],\n            \"qty\": 2\n        }\n    ]\n}"
+						},
+						"url": "http://localhost:3001/orders"
+					}
+				},
+				{
+					"name": "Create Order (Missing Idempotency-Key - 400)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer <YOUR_JWT_TOKEN>"
 							}
 						],
 						"body": {
@@ -303,6 +357,10 @@
 							{
 								"key": "Authorization",
 								"value": "Bearer <YOUR_JWT_TOKEN>"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}"
 							}
 						],
 						"body": {
@@ -320,6 +378,10 @@
 							{
 								"key": "Content-Type",
 								"value": "application/json"
+							},
+							{
+								"key": "Idempotency-Key",
+								"value": "{{$guid}}"
 							}
 						],
 						"body": {

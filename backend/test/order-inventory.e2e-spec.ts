@@ -34,6 +34,8 @@ import { VoucherUserQuota } from '../src/vouchers/voucher-user-quota.entity';
 import { AddVouchers1761850000000 } from '../src/migrations/1761850000000-AddVouchers';
 import { MockBankLedger1761890000000 } from '../src/migrations/1761890000000-MockBankLedger';
 import { BankTransaction } from '../src/mock-bank/bank-transaction.entity';
+import { OrderRequestKeys1761900000000 } from '../src/migrations/1761900000000-OrderRequestKeys';
+import { OrderRequestKey } from '../src/orders/order-request-key.entity';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
@@ -125,6 +127,7 @@ describeDatabase(
           VoucherUsage,
           VoucherUserQuota,
           BankTransaction,
+          OrderRequestKey,
         ],
         migrations: [
           InitialSchema1761580800000,
@@ -138,6 +141,7 @@ describeDatabase(
           PaymentRequestKeys1761870000000,
           BenefitsFoundation1761880000000,
           MockBankLedger1761890000000,
+          OrderRequestKeys1761900000000,
         ],
         synchronize: false,
         logging: false,
@@ -170,7 +174,7 @@ describeDatabase(
     beforeEach(async () => {
       // The URL guard above is mandatory: this suite owns all rows in its test DB.
       await database.query(
-        'TRUNCATE bank_transactions, vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
+        'TRUNCATE order_request_keys, bank_transactions, vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
       );
       await database.query(
         'UPDATE ingredients SET quantity = 1000, version = 1',
@@ -838,6 +842,7 @@ describeDatabase(
         request(app.getHttpServer())
           .post('/orders')
           .set('Authorization', `Bearer ${token}`)
+          .set('Idempotency-Key', randomUUID())
           .send({ items: [item()], voucherCode, total: 1, discount: 999999 });
 
       it('shows an empty list without seeding arbitrary business promotions', async () => {
@@ -1399,6 +1404,83 @@ describeDatabase(
       });
     });
 
+    describe('POST /orders with Idempotency-Key (Task 10, tiêu chí b)', () => {
+      const place = (key: string | null, items = [item()], jwt = token) => {
+        const call = request(app.getHttpServer())
+          .post('/orders')
+          .set('Authorization', `Bearer ${jwt}`);
+        if (key !== null) call.set('Idempotency-Key', key);
+        return call.send({ items });
+      };
+      const orderCount = () => database.getRepository(Order).count();
+
+      it('requires the Idempotency-Key header', async () => {
+        await place(null).expect(400);
+        await place('   ').expect(400);
+        await place('x'.repeat(129)).expect(400);
+        expect(await orderCount()).toBe(0);
+      });
+
+      it('sending the same key twice creates one order and reserves stock once', async () => {
+        const key = randomUUID();
+        const first = await place(key).expect(201);
+        const second = await place(key).expect(201);
+        expect(second.body.orderId).toBe(first.body.orderId);
+        expect(second.body.expiresAt).toBe(first.body.expiresAt);
+        expect(await orderCount()).toBe(1);
+        expect((await stock()).quantity).toBe(980);
+      });
+
+      it('ten simultaneous requests with the same key create exactly one order', async () => {
+        const key = randomUUID();
+        const responses = await Promise.all(
+          Array.from({ length: 10 }, () => place(key)),
+        );
+        responses.forEach((response) => expect(response.status).toBe(201));
+        expect(new Set(responses.map((r) => r.body.orderId)).size).toBe(1);
+        expect(await orderCount()).toBe(1);
+        expect(await database.getRepository(OrderRequestKey).count()).toBe(1);
+        expect((await stock()).quantity).toBe(980);
+      });
+
+      it('rejects the same key with a different cart instead of returning an unrelated order', async () => {
+        const key = randomUUID();
+        await place(key).expect(201);
+        await place(key, [item({ qty: 2 })]).expect(409);
+        expect(await orderCount()).toBe(1);
+        expect((await stock()).quantity).toBe(980);
+      });
+
+      it('different keys create different orders, and keys are per account', async () => {
+        const key = randomUUID();
+        const mine = await place(key).expect(201);
+        const theirs = await place(key, [item()], adminToken).expect(201);
+        const another = await place(randomUUID()).expect(201);
+        expect(
+          new Set([
+            mine.body.orderId,
+            theirs.body.orderId,
+            another.body.orderId,
+          ]).size,
+        ).toBe(3);
+        expect((await stock()).quantity).toBe(940);
+      });
+
+      it('a failed attempt (out of stock) does not use up the key', async () => {
+        await database.getRepository(Ingredient).update('coffee', {
+          quantity: 0,
+        });
+        const key = randomUUID();
+        expect((await place(key)).status).toBeGreaterThanOrEqual(400);
+        expect(await database.getRepository(OrderRequestKey).count()).toBe(0);
+        await database.getRepository(Ingredient).update('coffee', {
+          quantity: 1000,
+        });
+        await place(key).expect(201);
+        expect(await orderCount()).toBe(1);
+      });
+    });
+
     it('exposes authenticated create/cancel APIs and hides orders owned by another account', async () => {
       await request(app.getHttpServer())
         .post('/orders')
@@ -1407,6 +1489,7 @@ describeDatabase(
       const response = await request(app.getHttpServer())
         .post('/orders')
         .set('Authorization', `Bearer ${token}`)
+        .set('Idempotency-Key', randomUUID())
         .send({ items: [item()] })
         .expect(201);
       expect(response.body.expiresAt).toBeDefined();

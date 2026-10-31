@@ -38,7 +38,10 @@ async function paidOrder(
   staff: AuthResponse,
 ) {
   const response = await request.post(`${api}/orders`, {
-    headers: { Authorization: `Bearer ${customer.access_token}` },
+    headers: {
+      Authorization: `Bearer ${customer.access_token}`,
+      "Idempotency-Key": randomUUID(),
+    },
     data: {
       items: [{ productId: "1", size: "M", toppingIds: ["cream"], qty: 2 }],
       voucherCode: "UI10K",

@@ -19,6 +19,7 @@ import { OrderInventoryReservation } from './orders/order-inventory-reservation.
 import { Voucher } from './vouchers/voucher.entity';
 import { PaymentRequestKey } from './payments/entities/payment-request-key.entity';
 import { BankTransaction } from './mock-bank/bank-transaction.entity';
+import { OrderRequestKey } from './orders/order-request-key.entity';
 import { VoucherUserQuota } from './vouchers/voucher-user-quota.entity';
 import { VoucherUsage } from './vouchers/voucher-usage.entity';
 
@@ -48,6 +49,7 @@ import { VoucherUsage } from './vouchers/voucher-usage.entity';
           VoucherUserQuota,
           VoucherUsage,
           BankTransaction,
+          OrderRequestKey,
         ],
         // Migrations run automatically on app startup (also handles seed order)
         migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
