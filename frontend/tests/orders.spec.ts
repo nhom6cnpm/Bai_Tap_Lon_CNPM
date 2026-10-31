@@ -330,9 +330,24 @@ test("expired orders cannot pay in history or direct checkout", async ({
   );
 });
 
+// The cart is persisted to localStorage asynchronously: wait for it before
+// navigating or reading it, otherwise the next page can start with an old cart.
+async function waitForCartItems(page: Page, count: number) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("brewlite-cart") ?? "null")?.state
+            ?.items?.length ?? 0,
+      ),
+    )
+    .toBe(count);
+}
+
 async function createFromCart(page: Page) {
   await page.goto("/products/1");
   await page.getByRole("button", { name: /^Thêm vào giỏ hàng/ }).click();
+  await waitForCartItems(page, 1);
   await page.goto("/cart");
   await page.getByRole("button", { name: /^Đặt hàng/ }).click();
   await expect(page).toHaveURL(/\/checkout\/ORD-/);
@@ -482,6 +497,7 @@ test("paying an earlier order preserves a newer different cart", async ({
   const paymentUrl = page.url();
   await page.goto("/products/2");
   await page.getByRole("button", { name: /^Thêm vào giỏ hàng/ }).click();
+  await waitForCartItems(page, 2);
   const before = await page.evaluate(() =>
     localStorage.getItem("brewlite-cart"),
   );
