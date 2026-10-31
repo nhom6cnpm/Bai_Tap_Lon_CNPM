@@ -2,72 +2,45 @@
 
 Ứng dụng đặt cà phê không dùng tiền mặt — Bài tập lớn môn Công nghệ Phần mềm, Trường Đại học Sài Gòn (HK I, 2026–2027).
 
-Nền làm việc Task 9: [kế hoạch tích hợp với schema và auth của nhóm](docs/task-9-integration-plan.md).
+Khách xem menu, chọn size/topping, thêm vào giỏ, đặt đơn và thanh toán không tiền mặt
+qua **ngân hàng giả lập**; nhân viên xác nhận thanh toán, cập nhật pha chế và xử lý hủy đơn
+(tự hoàn tiền) trên trang quản trị. Backend có máy trạng thái đơn hàng, thanh toán
+idempotent, giữ nguyên liệu khi đặt đồng thời, voucher và điểm thưởng (Task 10).
 
-Task 9 đã tích hợp: [API, giao diện và cách chạy](docs/task-9-integration.md),
-[kết quả kiểm thử](docs/task-9-validation.md).
+Repository: https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM
 
-Máy Ân tiếp tục làm việc tại `D:\Do_an_CNPM\Bai_Tap_Lon_CNPM`.
-Bản làm việc và Docker hiện tại ở nhánh `feature/task-9-10-handoff`, đã tích hợp
-Task 9/10c/d/e với thanh toán nhân viên và tiến trình pha chế, dựa trên main `61f4474`.
-Các nhánh cũ vẫn được giữ;
-[ghi nhận xử lý merge và giữ bản cũ](docs/workspace-recovery.md).
+## Tài liệu
+| Nội dung | Tài liệu |
+|---|---|
+| Bàn giao & luồng demo Task 9/10 | [docs/task-9-10-handoff.md](docs/task-9-10-handoff.md) |
+| Quyết định nghiệp vụ đã chốt | [docs/task-9-10-team-decisions.md](docs/task-9-10-team-decisions.md) |
+| Thanh toán do nhân viên xác nhận | [docs/staff-payment-integration.md](docs/staff-payment-integration.md) |
+| Tồn kho theo nguyên liệu, giữ/hoàn nguyên liệu (10c) | [docs/task-10c-inventory.md](docs/task-10c-inventory.md) |
+| Số ly còn bán theo size/topping | [docs/selection-availability.md](docs/selection-availability.md) |
+| Thanh toán idempotent (10d) | [docs/task-10d-payments.md](docs/task-10d-payments.md) |
+| Voucher & điểm thưởng (10e) | [docs/task-10e-vouchers.md](docs/task-10e-vouchers.md), [docs/task-10-voucher-points.md](docs/task-10-voucher-points.md) |
+| Hủy đơn & nhân viên duyệt | [docs/task-9-cancellation-review.md](docs/task-9-cancellation-review.md) |
+| Bảng pha chế | [docs/task-9-preparation-board.md](docs/task-9-preparation-board.md) |
+| Bộ sưu tập API (Postman) | [BrewLite.postman_collection.json](BrewLite.postman_collection.json) |
 
-**Theo dõi công việc của Ân:** [Thứ tự thực hiện Task 9 và Task 10c/d/e](docs/task-9-10-plan.md)
-— checklist, phạm vi đã chốt và bước tiếp theo.
-
-Task 10c: [giữ nguyên liệu, hủy/hết hạn và kiểm thử PostgreSQL](docs/task-10c-inventory.md).
-
-Task 10d: [khóa yêu cầu thanh toán và gửi lại an toàn](docs/task-10d-payments.md).
-
-Task 10e: [giao diện chọn/nhập voucher, API quote và lưu giảm giá trên đơn](docs/task-10e-vouchers.md).
-Đã có giao diện và nền xử lý trên nhánh `feature/task-10-vouchers`; có cấu hình
-[ba voucher công khai và mã nhập riêng mẫu `NHAP7K`](backend/voucher-samples.json)
-để nạp bằng `npm run vouchers:seed`
-trong backend. Cách chỉnh/xem chi tiết ở tài liệu Task 10e.
-
-[Nền dữ liệu lượt voucher, điểm và yêu cầu hủy](docs/task-10-benefits-foundation.md)
-đã được nâng cấp trên Docker; đơn cũ giữ policy 0, đơn mới áp dụng policy 1.
-
-[Backend hạn mức voucher và tích điểm](docs/task-10-voucher-points.md) đã hoàn thành
-trên `feature/task-10-voucher-points`; giữ/chốt/trả lượt và điểm theo transaction.
-[Giao diện số lượt voucher và cập nhật điểm](docs/task-10-voucher-points-ui.md)
-đã hoàn thành trên `feature/task-10-voucher-points-ui` và đã cập nhật Docker ở bước 6.
-
-[Bước 4 — hủy ngay/yêu cầu hủy và nhân viên duyệt](docs/task-9-cancellation-review.md)
-đã hoàn thành trên `feature/task-9-cancellation-review`, kế thừa các bước voucher/điểm.
-Có giao diện khách và `/admin/orders`.
-
-[Bước 5 — bảng pha chế và thông báo nhận món](docs/task-9-preparation-board.md)
-triển khai trên `feature/task-9-preparation-board`, kế thừa các bước trước.
-Nhân viên cập nhật PAID → PREPARING → READY → COMPLETED; khách theo dõi trên lịch
-sử/chi tiết đơn. Bản Docker đang chạy đã có các bước này.
-
-**Bản bàn giao mới nhất (30/10/2026):** [kết quả và luồng chạy thử Task 9/10c/d/e](docs/task-9-10-handoff.md).
-Mở http://localhost:3000/menu; nhân viên dùng `/admin/payments` và `/admin/orders`.
-Docker giữ chỗ 15 phút, có voucher/điểm/hủy/pha chế, ba dịch vụ có healthcheck.
-Đã qua 62/62 ca desktop/mobile trên production image, thử migration trên bản sao
-và giữ nguyên dữ liệu cũ. [Draft PR #31](https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM/pull/31)
-đã được tạo, còn review nhóm trước merge; không push trực tiếp main.
-Các tài liệu Task 10c/d cũ ghi luồng 5 phút/callback là lịch sử triển khai.
+Một số tài liệu Task 10c/d ghi luồng cũ (hạn 5 phút, cổng giả lập/callback); luồng hiện
+tại là ngân hàng giả lập + nhân viên xác nhận, hạn 15 phút, như mô tả trong README này.
 
 ## Công nghệ
-
-API và giao diện số ly còn bán theo size/topping:
-[hướng dẫn tích hợp](docs/selection-availability.md).
 
 | Thành phần | Công nghệ |
 |---|---|
 | Backend | NestJS (TypeScript), REST API |
 | Frontend | Next.js (React, TypeScript), TailwindCSS, React Query, Zustand |
 | CSDL | PostgreSQL 16 + TypeORM (Migrations) |
-| DevOps | Docker, Docker Compose, GitHub Actions |
+| DevOps | Docker, Docker Compose (chưa có CI) |
 
 ## Cấu trúc thư mục
 ```
-brewlite/
+Bai_Tap_Lon_CNPM/
 ├── backend/            # NestJS API (port 3001)
 ├── frontend/           # Next.js app (port 3000)
+├── docs/               # Tài liệu nghiệp vụ, bàn giao, kiểm thử
 ├── docker-compose.yml  # Docker Compose full-stack (postgres, backend, frontend)
 └── README.md
 ```
@@ -86,8 +59,8 @@ Yêu cầu máy đã cài Docker Desktop hoặc Docker Engine.
 
 ```bash
 # 1. Clone repository
-git clone <URL_REPO>
-cd brewlite
+git clone https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM.git
+cd Bai_Tap_Lon_CNPM
 
 # 2. Khởi động toàn bộ stack (PostgreSQL + Backend + Frontend)
 docker-compose up --build
@@ -193,34 +166,66 @@ Kiểm tra: mở http://localhost:3000 → hiển thị trang Menu món.
 ### Backend
 ```bash
 cd backend
+npm test            # unit test (không cần database)
+npm run lint        # oxlint
+npm run format      # prettier
+```
 
-# Chạy kiểm thử đơn vị (Unit Tests)
-npm test
+Test tích hợp với PostgreSQL thật (state machine, idempotency, đặt đồng thời không
+vượt tồn kho, voucher/điểm, hủy & hoàn tiền). Database **phải** có tên kết thúc bằng
+`_test` vì test sẽ xóa sạch dữ liệu trong đó:
 
-# Chạy e2e với PostgreSQL và database riêng, tên phải kết thúc bằng _test.
-# Tạo DB một lần từ thư mục gốc:
-# docker compose exec postgres createdb -U brewlite brewlite_task10_test
-# PowerShell, từ backend:
-$env:TEST_DATABASE_URL = 'postgresql://brewlite:brewlite@127.0.0.1:5432/brewlite_task10_test'
-npm run test:e2e
-# Không đặt TEST_DATABASE_URL thì các suite DB bị skip, không phải test đã qua.
+```bash
+# Tạo database một lần (từ thư mục gốc, khi Docker đang chạy)
+docker compose exec postgres createdb -U brewlite brewlite_task10_test
 
-# Kiểm tra linter
+cd backend
+# macOS / Linux
+TEST_DATABASE_URL=postgresql://brewlite:brewlite@127.0.0.1:5432/brewlite_task10_test npm run test:e2e
+# Windows PowerShell
+$env:TEST_DATABASE_URL = 'postgresql://brewlite:brewlite@127.0.0.1:5432/brewlite_task10_test'; npm run test:e2e
+```
+Không đặt `TEST_DATABASE_URL` thì các test cần database bị bỏ qua (không phải là đã qua).
+
+### Frontend
+```bash
+cd frontend
 npm run lint
+npm run build
+```
 
-# Tự động định dạng mã nguồn
-npm run format
+Test giao diện Playwright (desktop + mobile) tự khởi động backend (cổng 3201) và frontend
+(cổng 3200) trên database riêng `brewlite_task9_ui_test`:
+
+```bash
+docker compose exec postgres createdb -U brewlite brewlite_task9_ui_test   # một lần
+cd frontend
+npx playwright install chromium   # một lần; hoặc dùng Chrome có sẵn: PLAYWRIGHT_CHANNEL=chrome
+npm run test:e2e
 ```
 
 ---
 
 ## Checklist Demo End-to-End (Bàn giao)
-- [ ] **Menu**: Mở http://localhost:3000 hiển thị danh sách 6 món cà phê / trà.
-- [ ] **Chi tiết món**: Bấm vào món xem giá gốc, chọn Size (S/M/L) và Topping, giá cập nhật theo thời gian thực.
-- [ ] **Giỏ hàng**: Thêm món vào giỏ, điều chỉnh số lượng, tổng tiền khớp với tính toán.
-- [ ] **Đăng ký & Đăng nhập**: Đăng ký tài khoản người dùng mới và đăng nhập nhận JWT token.
-- [ ] **Đặt hàng**: Đặt món từ giỏ hàng, đơn hàng được lưu vào PostgreSQL với trạng thái `PENDING`.
-- [ ] **Bảo toàn dữ liệu**: Dừng và khởi động lại (`docker-compose down` rồi `up`) — tài khoản và đơn hàng vẫn còn nguyên vẹn trong PostgreSQL volume `pgdata`.
+Chạy `docker compose up --build`, mở http://localhost:3000. Tài khoản nhân viên mặc định:
+`admin@brewlite.vn` / `admin123`.
+
+- [ ] **Menu**: 6 món, có hình, giá và số ly còn bán; trạng thái tải/lỗi.
+- [ ] **Chi tiết món**: chọn Size (S/M/L) và Topping, giá cập nhật ngay.
+- [ ] **Giỏ hàng**: thêm, sửa số lượng, xóa; tổng tiền và badge số lượng đúng; tải lại trang vẫn giữ giỏ.
+- [ ] **Đăng ký & đăng nhập** (JWT); chưa đăng nhập thì không đặt được đơn.
+- [ ] **Đặt hàng**: đơn `PENDING`, nguyên liệu được giữ, có đồng hồ 15 phút; có thể áp voucher.
+- [ ] **Thanh toán (Ví)**: quét QR / bấm "Mở ngân hàng giả lập" → "Chuyển tiền" → màn hình khách báo
+      "Đã nhận tiền, đang chờ nhân viên xác nhận"; đơn vẫn `PENDING`.
+- [ ] **Nhân viên** (`/admin/payments`, tài khoản khác/tab ẩn danh): thấy thông báo "Tiền đã về",
+      bấm **Xác nhận** → đơn `PAID`, khách tự chuyển sang màn hình xác nhận (mã đơn, trạng thái),
+      được cộng điểm. Tab **Sao kê** có dòng tiền vào.
+- [ ] **Thanh toán lỗi**: nhân viên **Từ chối** → `PAYMENT_FAILED`, tiền được hoàn, giỏ giữ nguyên, khách bấm "Thử lại".
+- [ ] **Lịch sử đơn** (`/orders`): thấy đơn và trạng thái.
+- [ ] **Pha chế** (`/admin/orders`): `PAID → PREPARING → READY → COMPLETED`; khách được báo khi món sẵn sàng.
+- [ ] **Hủy đơn**: đơn chưa trả tiền hủy ngay; đơn `PAID` gửi yêu cầu → nhân viên đồng ý → `CANCELLED`,
+      tự hoàn tiền (Sao kê có dòng "Hoàn tiền"), trả lượt voucher, thu hồi điểm.
+- [ ] **Bảo toàn dữ liệu**: `docker compose down` rồi `up` — tài khoản và đơn vẫn còn (volume `pgdata`).
 
 ---
 
