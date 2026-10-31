@@ -18,6 +18,7 @@ import { Roles } from '../auth/roles';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { OrdersService } from './orders.service';
 import { OrderHistoryService } from './order-history.service';
+import { AdminOrderHistoryQueryDto } from './dto/admin-order-history.dto';
 import {
   ApproveCancellationDto,
   RejectCancellationDto,
@@ -35,6 +36,19 @@ export class AdminOrdersController {
     private readonly orders: OrdersService,
     private readonly history: OrderHistoryService,
   ) {}
+
+  // Static routes before ':id' routes
+  @Get('history')
+  @Header('Cache-Control', 'private, no-store')
+  historyList(@Query() query: AdminOrderHistoryQueryDto) {
+    return this.history.findForAdminHistory(query);
+  }
+
+  @Get(':id/detail')
+  @Header('Cache-Control', 'private, no-store')
+  detail(@Param('id') id: string) {
+    return this.history.findAdminDetail(id);
+  }
 
   @Get()
   @Header('Cache-Control', 'private, no-store')

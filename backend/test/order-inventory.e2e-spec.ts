@@ -1418,6 +1418,114 @@ describeDatabase(
       });
     });
 
+    describe('admin ingredient table and order history', () => {
+      const asAdmin = (path: string, jwt = adminToken) =>
+        request(app.getHttpServer())
+          .get(path)
+          .set('Authorization', `Bearer ${jwt}`);
+
+      it('shows stock, the amount held for unpaid orders and cups left; customers get 403', async () => {
+        await asAdmin('/admin/ingredients', token).expect(403);
+        const order = await create();
+        const held = await asAdmin('/admin/ingredients').expect(200);
+        const coffee = held.body.ingredients.find(
+          (row: { id: string }) => row.id === 'coffee',
+        );
+        expect(coffee).toMatchObject({ quantity: 980, reserved: 20 });
+        expect(coffee.usedBy.length).toBeGreaterThan(0);
+        expect(held.body.products.map((row: { id: string }) => row.id)).toEqual(
+          ['1', '2', '3', '4', '5', '6'],
+        );
+        await orders.cancelOrder(userId, order.orderId);
+        const released = await asAdmin('/admin/ingredients').expect(200);
+        expect(
+          released.body.ingredients.find(
+            (row: { id: string }) => row.id === 'coffee',
+          ),
+        ).toMatchObject({ quantity: 1000, reserved: 0 });
+      });
+
+      it('lists every order with status filter, search and paging; detail shows payments and refunds', async () => {
+        await asAdmin('/admin/orders/history', token).expect(403);
+        const cancelled = await create();
+        await orders.cancelOrder(userId, cancelled.orderId);
+        const refunded = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: refunded.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        await payments.receiveTransfer(payment.paymentId);
+        await staffReview(payment.paymentId, 'FAILED');
+        const pending = await create();
+
+        const all = await asAdmin('/admin/orders/history').expect(200);
+        expect(all.body.total).toBe(3);
+        expect(all.body.items.map((row: { id: string }) => row.id)).toEqual([
+          pending.orderId,
+          refunded.orderId,
+          cancelled.orderId,
+        ]);
+        const customer = await database
+          .getRepository(User)
+          .findOneByOrFail({ id: userId });
+        expect(all.body.items[0].customerEmail).toBe(customer.email);
+
+        const onlyCancelled = await asAdmin(
+          '/admin/orders/history?status=CANCELLED',
+        ).expect(200);
+        expect(
+          onlyCancelled.body.items.map((row: { id: string }) => row.id),
+        ).toEqual([cancelled.orderId]);
+        const byCode = await asAdmin(
+          `/admin/orders/history?q=${refunded.orderId.slice(4, 16)}`,
+        ).expect(200);
+        expect(byCode.body.items.map((row: { id: string }) => row.id)).toEqual([
+          refunded.orderId,
+        ]);
+        const byEmail = await asAdmin(
+          `/admin/orders/history?q=${encodeURIComponent(customer.email.slice(0, 12))}`,
+        ).expect(200);
+        expect(byEmail.body.total).toBe(3);
+        const paged = await asAdmin(
+          '/admin/orders/history?page=2&pageSize=2',
+        ).expect(200);
+        expect(paged.body).toMatchObject({ total: 3, page: 2, pageSize: 2 });
+        expect(paged.body.items).toHaveLength(1);
+        await asAdmin('/admin/orders/history?status=WRONG').expect(400);
+        await asAdmin('/admin/orders/history?pageSize=500').expect(400);
+
+        const detail = await asAdmin(
+          `/admin/orders/${refunded.orderId}/detail`,
+        ).expect(200);
+        const admin = await database
+          .getRepository(User)
+          .findOneByOrFail({ id: adminId });
+        expect(detail.body).toMatchObject({
+          id: refunded.orderId,
+          status: 'PAYMENT_FAILED',
+          customerEmail: customer.email,
+          refundedAmount: refunded.total,
+        });
+        expect(detail.body.payments).toEqual([
+          expect.objectContaining({
+            paymentId: payment.paymentId,
+            status: 'FAILED',
+            reviewedByEmail: admin.email,
+          }),
+        ]);
+        expect(
+          detail.body.bankTransactions.map(
+            (row: { type: string; amount: number }) => [row.type, row.amount],
+          ),
+        ).toEqual([
+          ['IN', refunded.total],
+          ['REFUND', refunded.total],
+        ]);
+        await asAdmin('/admin/orders/ORD-missing/detail').expect(404);
+      });
+    });
+
     describe('POST /orders with Idempotency-Key (Task 10, tiêu chí b)', () => {
       const place = (key: string | null, items = [item()], jwt = token) => {
         const call = request(app.getHttpServer())
