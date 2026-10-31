@@ -35,6 +35,7 @@ import { AddVouchers1761850000000 } from '../src/migrations/1761850000000-AddVou
 import { MockBankLedger1761890000000 } from '../src/migrations/1761890000000-MockBankLedger';
 import { BankTransaction } from '../src/mock-bank/bank-transaction.entity';
 import { OrderRequestKeys1761900000000 } from '../src/migrations/1761900000000-OrderRequestKeys';
+import { SeedSampleVouchers1761910000000 } from '../src/migrations/1761910000000-SeedSampleVouchers';
 import { OrderRequestKey } from '../src/orders/order-request-key.entity';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -142,6 +143,7 @@ describeDatabase(
           BenefitsFoundation1761880000000,
           MockBankLedger1761890000000,
           OrderRequestKeys1761900000000,
+          SeedSampleVouchers1761910000000,
         ],
         synchronize: false,
         logging: false,
@@ -1101,7 +1103,7 @@ describeDatabase(
         expect((await stock()).version).toBe(3);
       });
 
-      it('backfills existing order totals through the voucher migration without activating any codes', async () => {
+      it('backfills existing order totals through the voucher migration and only seeds the documented sample codes', async () => {
         const created = await create();
         await database
           .getRepository(Order)
@@ -1114,7 +1116,19 @@ describeDatabase(
           total: 35000,
           voucherCode: null,
         });
-        expect(await database.getRepository(Voucher).count()).toBe(0);
+        // SeedSampleVouchers: exactly the four samples listed in the README
+        const seeded = await database
+          .getRepository(Voucher)
+          .find({ order: { code: 'ASC' } });
+        expect(seeded.map((voucher) => voucher.code)).toEqual([
+          'BREW10',
+          'NHAP7K',
+          'NHOM15K',
+          'THU5K',
+        ]);
+        expect(
+          seeded.find((voucher) => voucher.code === 'NHAP7K')?.isPublic,
+        ).toBe(false);
       });
     });
 

@@ -116,6 +116,12 @@ checkout/QR dùng đồng hồ backend, thử lại không gia hạn và PAID kh
 `ORDER_PAYMENT_TIMEOUT_MINUTES` trong `.env` gốc (Docker) hoặc `backend/.env`
 (chạy local) chỉ áp dụng cho đơn mới. Đơn cũ giữ nguyên hạn.
 
+**Voucher mẫu** có sẵn khi database được tạo (migration `SeedSampleVouchers`), dùng
+chung cho mọi tài khoản, mỗi tài khoản 3 lần/mã, hạn 30 ngày từ lúc tạo database:
+`THU5K` (−5.000đ, đơn từ 30.000đ), `BREW10` (−10%, tối đa 10.000đ, đơn từ 50.000đ),
+`NHOM15K` (−15.000đ, đơn từ 100.000đ) và mã ẩn phải gõ tay `NHAP7K` (−7.000đ, đơn từ
+35.000đ). Hết hạn thì gia hạn bằng `npm run vouchers:seed -- --update` trong `backend`.
+
 Trang nhân viên: http://localhost:3000/admin/payments. Docker có tài khoản phát triển
 mặc định `admin@brewlite.vn` / `admin123`; có thể đổi qua `ADMIN_EMAIL` và
 `ADMIN_PASSWORD`. Với tài khoản đã tồn tại, seed giữ mật khẩu cũ. Chạy local cần
