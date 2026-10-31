@@ -68,7 +68,7 @@ export function OrderCheckout({ id }: { id: string }) {
           const previous = await getPayment(stored.paymentId);
           if (
             previous.status === "PENDING" ||
-            previous.status === "CUSTOMER_REPORTED"
+            previous.status === "TRANSFER_RECEIVED"
           ) {
             router.push(`/pay/${encodeURIComponent(previous.paymentId)}`);
             return;

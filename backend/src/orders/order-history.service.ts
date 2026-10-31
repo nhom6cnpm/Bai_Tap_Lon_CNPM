@@ -11,6 +11,7 @@ import { Payment } from '../payments/entities/payment.entity';
 import { Order } from './order.entity';
 import type { OrderHistoryResponseDto } from './dto/order-history-response.dto';
 import { cancellationCapabilities } from './order-cancellation';
+import { BankLedgerService } from '../mock-bank/bank-ledger.service';
 
 @Injectable()
 export class OrderHistoryService {
@@ -19,6 +20,7 @@ export class OrderHistoryService {
     @InjectRepository(User) private readonly users: Repository<User>,
     @InjectRepository(Payment) private readonly payments: Repository<Payment>,
     private readonly dataSource: DataSource,
+    private readonly ledger: BankLedgerService,
   ) {}
 
   private async requireUser(userId: string): Promise<void> {
@@ -55,7 +57,7 @@ export class OrderHistoryService {
     userId?: string,
   ): Promise<OrderHistoryResponseDto[]> {
     if (!orders.length) return [];
-    const [clock, payments] = await Promise.all([
+    const [clock, payments, refunds] = await Promise.all([
       this.dataSource.query<Array<{ now: Date }>>(
         'SELECT clock_timestamp() AS now',
       ),
@@ -66,6 +68,7 @@ export class OrderHistoryService {
         },
         order: { createdAt: 'DESC', id: 'DESC' },
       }),
+      this.ledger.refundedByOrder(orders.map((order) => order.id)),
     ]);
     const now = new Date(clock[0].now);
     return orders.map((order) => {
@@ -74,12 +77,13 @@ export class OrderHistoryService {
       );
       const payment =
         candidates.find((entry) => entry.status === 'SUCCESS') ?? candidates[0];
+      const transferReceived = candidates.some(
+        (entry) => entry.status === 'TRANSFER_RECEIVED',
+      );
       return {
-        ...cancellationCapabilities(
-          order,
-          candidates.some((entry) => entry.status === 'CUSTOMER_REPORTED'),
-          now,
-        ),
+        ...cancellationCapabilities(order, transferReceived, now),
+        // Money arrived but staff have not decided: never auto-expired
+        transferReceived,
         id: order.id,
         status: order.status,
         total: order.total,
@@ -97,6 +101,8 @@ export class OrderHistoryService {
         cancelledAt: order.cancelledAt,
         cancelReason: order.cancelReason,
         paymentMethod: payment?.method ?? null,
+        // Ngân hàng giả lập: money given back to the customer for this order
+        refundedAmount: refunds.get(order.id) ?? 0,
         serverTime: now,
         canPay:
           ['PENDING', 'PAYMENT_FAILED'].includes(order.status) &&

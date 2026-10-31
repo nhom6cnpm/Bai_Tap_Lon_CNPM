@@ -216,6 +216,8 @@ function rewardOrder(cancelled = false, zero = false): Order {
     cancelledAt: cancelled ? now : null,
     cancelReason: cancelled ? "USER_CANCELLED" : null,
     paymentMethod: "CARD",
+    refundedAmount: 0,
+    transferReceived: false,
     serverTime: now,
     canPay: false,
     benefitsPolicyVersion: 1,

@@ -32,6 +32,8 @@ import { BenefitsFoundation1761880000000 } from '../src/migrations/1761880000000
 import { VoucherUsage } from '../src/vouchers/voucher-usage.entity';
 import { VoucherUserQuota } from '../src/vouchers/voucher-user-quota.entity';
 import { AddVouchers1761850000000 } from '../src/migrations/1761850000000-AddVouchers';
+import { MockBankLedger1761890000000 } from '../src/migrations/1761890000000-MockBankLedger';
+import { BankTransaction } from '../src/mock-bank/bank-transaction.entity';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const describeDatabase = databaseUrl ? describe : describe.skip;
@@ -71,6 +73,12 @@ describeDatabase(
         `UPDATE orders SET "expiresAt" = clock_timestamp() - INTERVAL '1 second' WHERE id = $1`,
         [id],
       );
+    // Sao kê of the mock bank for one order, oldest first
+    const statement = (orderId: string) =>
+      database.getRepository(BankTransaction).find({
+        where: { orderId },
+        order: { createdAt: 'ASC', id: 'ASC' },
+      });
     const staffReview = (
       paymentId: string,
       result: 'SUCCESS' | 'FAILED' = 'SUCCESS',
@@ -116,6 +124,7 @@ describeDatabase(
           Voucher,
           VoucherUsage,
           VoucherUserQuota,
+          BankTransaction,
         ],
         migrations: [
           InitialSchema1761580800000,
@@ -128,6 +137,7 @@ describeDatabase(
           OrderPaymentTimeoutDefault1761860000000,
           PaymentRequestKeys1761870000000,
           BenefitsFoundation1761880000000,
+          MockBankLedger1761890000000,
         ],
         synchronize: false,
         logging: false,
@@ -160,7 +170,7 @@ describeDatabase(
     beforeEach(async () => {
       // The URL guard above is mandatory: this suite owns all rows in its test DB.
       await database.query(
-        'TRUNCATE vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
+        'TRUNCATE bank_transactions, vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
       );
       await database.query(
         'UPDATE ingredients SET quantity = 1000, version = 1',
@@ -1599,7 +1609,7 @@ describeDatabase(
           { orderId: created.orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await payments.reportPaid(userId, payment.paymentId);
+        await payments.receiveTransfer(payment.paymentId);
         const reported = await cancel(created.orderId).expect(409);
         expect(reported.body.code).toBe('CANCELLATION_REQUIRES_REVIEW');
         expect((await getOrder(created.orderId)).status).toBe('PENDING');
@@ -1610,30 +1620,44 @@ describeDatabase(
         expect((await stock()).version).toBe(2);
       });
 
-      it('allows cancelling PAYMENT_FAILED and still expires reported orders automatically', async () => {
+      it('allows cancelling PAYMENT_FAILED (money refunded) and never auto-expires an order whose money already arrived', async () => {
         const failed = await create();
         const first = await payments.createPayment(
           userId,
           { orderId: failed.orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await payments.reportPaid(userId, first.paymentId);
+        await payments.receiveTransfer(first.paymentId);
         await staffReview(first.paymentId, 'FAILED');
+        expect(
+          (await statement(failed.orderId)).map((row) => [
+            row.type,
+            row.amount,
+          ]),
+        ).toEqual([
+          ['IN', failed.total],
+          ['REFUND', failed.total],
+        ]);
         await cancel(failed.orderId).expect(200);
-        const expiring = await create();
+        expect(await statement(failed.orderId)).toHaveLength(2);
+
+        const paidInTime = await create();
         const second = await payments.createPayment(
           userId,
-          { orderId: expiring.orderId, method: 'WALLET' },
+          { orderId: paidInTime.orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await payments.reportPaid(userId, second.paymentId);
-        await expire(expiring.orderId);
-        await orders.expireUnpaidOrders();
-        await cancel(expiring.orderId).expect(200);
-        expect((await getOrder(expiring.orderId)).cancelReason).toBe(
-          'PAYMENT_TIMEOUT',
-        );
-        expect((await stock()).quantity).toBe(1000);
+        await payments.receiveTransfer(second.paymentId);
+        await expire(paidInTime.orderId);
+        expect(await orders.expireUnpaidOrders()).toBe(0);
+        expect((await getOrder(paidInTime.orderId)).status).toBe('PENDING');
+        const blocked = await cancel(paidInTime.orderId).expect(409);
+        expect(blocked.body.code).toBe('CANCELLATION_REQUIRES_REVIEW');
+        // Staff may still confirm after the deadline because the money arrived in time
+        await staffReview(second.paymentId);
+        expect((await getOrder(paidInTime.orderId)).status).toBe('PAID');
+        expect(await statement(paidInTime.orderId)).toHaveLength(1);
+        expect((await stock()).quantity).toBe(980);
       });
 
       it('blocks immediate cancellation when a request is pending and keeps ownership private', async () => {
@@ -1661,7 +1685,7 @@ describeDatabase(
           randomUUID(),
         );
         const results = await Promise.allSettled([
-          payments.reportPaid(userId, payment.paymentId),
+          payments.receiveTransfer(payment.paymentId),
           orders.cancelOrder(userId, created.orderId),
         ]);
         expect(
@@ -1767,7 +1791,7 @@ describeDatabase(
           { orderId: waiting.orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await payments.reportPaid(userId, payment.paymentId);
+        await payments.receiveTransfer(payment.paymentId);
         await orders.requestCancellation(
           userId,
           waiting.orderId,
@@ -2024,7 +2048,7 @@ describeDatabase(
           { orderId: order.orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await payments.reportPaid(userId, payment.paymentId);
+        await payments.receiveTransfer(payment.paymentId);
         if (paid) await staffReview(payment.paymentId);
         return { order, payment };
       };
@@ -2040,19 +2064,27 @@ describeDatabase(
         await ask(created.orderId, 'Other account', adminToken).expect(404);
         const payment = await payments.createPayment(
           userId,
-          { orderId: created.orderId, method: 'CARD' },
+          { orderId: created.orderId, method: 'WALLET' },
           randomUUID(),
         );
         expect((await own(created.orderId)).body.canCancelImmediately).toBe(
           true,
         );
-        await payments.reportPaid(userId, payment.paymentId);
+        await payments.receiveTransfer(payment.paymentId);
         expect((await own(created.orderId)).body).toMatchObject({
           canCancelImmediately: false,
           canRequestCancellation: true,
         });
+        // Money arrived in time: after the deadline the customer can still ask staff
         await expire(created.orderId);
         expect((await own(created.orderId)).body).toMatchObject({
+          canCancelImmediately: false,
+          canRequestCancellation: true,
+        });
+        // Without money, an expired order offers nothing
+        const unpaid = await create();
+        await expire(unpaid.orderId);
+        expect((await own(unpaid.orderId)).body).toMatchObject({
           canCancelImmediately: false,
           canRequestCancellation: false,
         });
@@ -2201,24 +2233,29 @@ describeDatabase(
           ).status,
         ).toBe('RELEASED');
         await expect(
-          payments.reportPaid(userId, payment.paymentId),
+          payments.receiveTransfer(payment.paymentId),
         ).rejects.toThrow();
         await expect(staffReview(payment.paymentId)).rejects.toThrow();
         expect(await orders.expireUnpaidOrders()).toBe(0);
       });
 
-      it('requires a money handling note for PAID cancellation and keeps the successful payment and price snapshot', async () => {
+      it('refunds a PAID cancellation exactly once through the mock bank and keeps the successful payment and price snapshot', async () => {
         const { order, payment } = await open(true, true);
         const paid = await getOrder(order.orderId);
         expect(paid.pointsEarned).toBe(3);
         const pending = (await ask(order.orderId)).body.cancelRequest;
-        await approve(order.orderId, pending.id).expect(400);
         await approve(
           order.orderId,
           pending.id,
           'Đã ghi nhận cần đối chiếu tiền tại quầy',
         ).expect(200);
         await approve(order.orderId, pending.id, 'Repeated action').expect(200);
+        expect(
+          (await statement(order.orderId)).map((row) => [row.type, row.amount]),
+        ).toEqual([
+          ['IN', paid.total],
+          ['REFUND', paid.total],
+        ]);
         const cancelled = await getOrder(order.orderId);
         expect(cancelled).toMatchObject({
           status: 'CANCELLED',
@@ -2277,19 +2314,20 @@ describeDatabase(
         ).toBe('USED');
       });
 
-      it('expires reported unpaid requests automatically, closes them as EXPIRED and rejects stale reviews without another refund', async () => {
+      it('never expires an unpaid request whose money arrived; approval cancels and refunds once', async () => {
         const { order, payment } = await open(false, true);
         const pending = (await ask(order.orderId)).body.cancelRequest;
         await expire(order.orderId);
-        await approve(order.orderId, pending.id).expect(409);
-        const expired = await getOrder(order.orderId);
-        expect(expired).toMatchObject({
+        expect(await orders.expireUnpaidOrders()).toBe(0);
+        expect((await getOrder(order.orderId)).status).toBe('PENDING');
+        await approve(order.orderId, pending.id).expect(200);
+        await approve(order.orderId, pending.id).expect(200);
+        expect(await getOrder(order.orderId)).toMatchObject({
           status: 'CANCELLED',
-          cancelReason: 'PAYMENT_TIMEOUT',
-          cancelRequestStatus: 'EXPIRED',
-          cancelReviewedBy: null,
+          cancelReason: 'USER_CANCELLED',
+          cancelRequestStatus: 'APPROVED',
+          cancelReviewedBy: adminId,
         });
-        expect(expired.cancelReviewedAt).toBeInstanceOf(Date);
         expect(
           (
             await database
@@ -2297,6 +2335,12 @@ describeDatabase(
               .findOneByOrFail({ id: payment.paymentId })
           ).status,
         ).toBe('FAILED');
+        expect(
+          (await statement(order.orderId)).map((row) => [row.type, row.amount]),
+        ).toEqual([
+          ['IN', order.total],
+          ['REFUND', order.total],
+        ]);
         expect((await stock()).quantity).toBe(1000);
         await reject(order.orderId, pending.id).expect(409);
         await orders.expireUnpaidOrders();
@@ -2304,7 +2348,9 @@ describeDatabase(
       });
 
       it('commits timeout cancellation before returning a request error and does not time out PAID requests', async () => {
-        const { order } = await open();
+        // A PAYMENT_FAILED order has no money left (refunded on rejection)
+        const { order, payment } = await open();
+        await staffReview(payment.paymentId, 'FAILED');
         await expire(order.orderId);
         await ask(order.orderId).expect(409);
         expect((await getOrder(order.orderId)).status).toBe('CANCELLED');
@@ -2493,7 +2539,7 @@ describeDatabase(
           { orderId: created.orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await payments.reportPaid(userId, first.paymentId);
+        await payments.receiveTransfer(first.paymentId);
         expect((await usage(created.orderId)).status).toBe('RESERVED');
         expect(await points()).toBe(0);
         await staffReview(first.paymentId, 'FAILED');
@@ -2653,12 +2699,12 @@ describeDatabase(
           discounted(),
           discounted(),
         ]);
-        const reported = await payments.createPayment(
+        // A payment session without money: expires like an unpaid order
+        await payments.createPayment(
           userId,
           { orderId: created[0].orderId, method: 'WALLET' },
           randomUUID(),
         );
-        await payments.reportPaid(userId, reported.paymentId);
         const failed = await payments.createPayment(
           userId,
           { orderId: created[1].orderId, method: 'CARD' },
@@ -2893,30 +2939,49 @@ describeDatabase(
         const active = await payments.listForAdmin({ status: 'ACTIVE' });
         expect(active.map((row) => row.paymentId)).toEqual([payment.paymentId]);
       });
-      const report = (id: string, jwt = token) =>
-        request(app.getHttpServer())
-          .post(`/payments/${id}/report-paid`)
-          .set('Authorization', `Bearer ${jwt}`);
+      // Ngân hàng giả lập: public, opened by scanning the QR on a phone
+      const report = (id: string) =>
+        request(app.getHttpServer()).post(`/mock-bank/payments/${id}/transfer`);
       const review = (id: string, decision = 'confirm', jwt = adminToken) =>
         request(app.getHttpServer())
           .post(`/admin/payments/${id}/${decision}`)
           .set('Authorization', `Bearer ${jwt}`)
           .send({ note: 'Đã đối chiếu tại quầy' });
 
-      it('only staff may confirm; reporting is replay-safe and does not pay or change inventory', async () => {
+      it('only staff may confirm; a mock bank transfer is replay-safe and does not pay or change inventory', async () => {
         const order = await create();
         const payment = await payments.createPayment(
           userId,
           { orderId: order.orderId, method: 'WALLET' },
           randomUUID(),
         );
+        const info = await request(app.getHttpServer())
+          .get(`/mock-bank/payments/${payment.paymentId}`)
+          .expect(200);
+        expect(info.body).toMatchObject({
+          amount: order.total,
+          transferContent: order.orderId,
+          status: 'PENDING',
+        });
         const first = await report(payment.paymentId).expect(200);
         expect(first.body).toMatchObject({
-          status: 'CUSTOMER_REPORTED',
+          status: 'TRANSFER_RECEIVED',
           orderStatus: 'PENDING',
         });
         const repeated = await report(payment.paymentId).expect(200);
-        expect(repeated.body.reportedAt).toBe(first.body.reportedAt);
+        expect(repeated.body.receivedAt).toBe(first.body.receivedAt);
+        expect(await statement(order.orderId)).toHaveLength(1);
+        await request(app.getHttpServer())
+          .get('/admin/bank-transactions')
+          .set('Authorization', `Bearer ${token}`)
+          .expect(403);
+        const ledger = await request(app.getHttpServer())
+          .get(`/admin/bank-transactions?orderId=${order.orderId}`)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .expect(200);
+        expect(ledger.body).toEqual([
+          expect.objectContaining({ type: 'IN', amount: order.total }),
+        ]);
         await review(payment.paymentId, 'confirm', token).expect(403);
         await request(app.getHttpServer())
           .get('/admin/payments')
@@ -2984,6 +3049,31 @@ describeDatabase(
           ),
         ).rejects.toThrow('Idempotency-Key');
         expect(await database.getRepository(Payment).count()).toBe(1);
+      });
+
+      it('credits a payment once for concurrent mock bank transfers and refunds once for concurrent rejections', async () => {
+        const order = await create();
+        const payment = await payments.createPayment(
+          userId,
+          { orderId: order.orderId, method: 'WALLET' },
+          randomUUID(),
+        );
+        const transfers = await Promise.all(
+          Array.from({ length: 8 }, () => report(payment.paymentId)),
+        );
+        transfers.forEach((response) => expect(response.status).toBe(200));
+        expect(await statement(order.orderId)).toHaveLength(1);
+        await Promise.all([
+          review(payment.paymentId, 'reject'),
+          review(payment.paymentId, 'reject'),
+        ]);
+        expect(
+          (await statement(order.orderId)).map((row) => [row.type, row.amount]),
+        ).toEqual([
+          ['IN', order.total],
+          ['REFUND', order.total],
+        ]);
+        expect((await getOrder(order.orderId)).status).toBe('PAYMENT_FAILED');
       });
 
       it.each(['report', 'confirm', 'reject'])(

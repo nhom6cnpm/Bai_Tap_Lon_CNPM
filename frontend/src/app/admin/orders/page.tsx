@@ -186,9 +186,12 @@ function ReviewCard({
   const [note, setNote] = useState("");
   const client = useQueryClient();
   const request = order.cancelRequest!;
+  // Money that arrived in time keeps the order open past its deadline
   const expired =
     ["PENDING", "PAYMENT_FAILED"].includes(order.status) &&
+    !order.transferReceived &&
     Date.parse(order.expiresAt) <= serverNow;
+  const holdsMoney = order.status === "PAID" || order.transferReceived;
   const action = useMutation({
     mutationFn: (approve: boolean) =>
       reviewCancellation(order.id, request.id, approve, note.trim(), token),
@@ -204,7 +207,9 @@ function ReviewCard({
     if (
       window.confirm(
         approve
-          ? `Đồng ý hủy đơn ${order.id}?`
+          ? holdsMoney
+            ? `Đồng ý hủy đơn ${order.id} và hoàn ${formatPrice(order.total)} cho khách?`
+            : `Đồng ý hủy đơn ${order.id}?`
           : `Từ chối yêu cầu hủy đơn ${order.id}?`,
       )
     )
@@ -222,10 +227,10 @@ function ReviewCard({
       </p>
       <OrderItems order={order} />
       <PriceSummary totals={order} />
-      {order.status === "PAID" && (
+      {holdsMoney && (
         <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
-          Đã ghi nhận {formatPrice(order.total)}. Hệ thống không tự hoàn tiền.
-          Cần ghi chú cách xử lý tiền trước khi đồng ý hủy.
+          Quán đã nhận {formatPrice(order.total)}. Khi đồng ý hủy, hệ thống tự
+          hoàn {formatPrice(order.total)} cho khách qua ngân hàng giả lập.
         </p>
       )}
       {expired && (
@@ -245,11 +250,7 @@ function ReviewCard({
       </label>
       <div className="mt-3 flex flex-wrap gap-2">
         <button
-          disabled={
-            action.isPending ||
-            expired ||
-            (order.status === "PAID" && !note.trim())
-          }
+          disabled={action.isPending || expired}
           onClick={() => decide(true)}
           className="rounded-xl bg-amber-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >

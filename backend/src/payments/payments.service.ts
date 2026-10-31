@@ -28,15 +28,18 @@ import {
   Payment,
   type PaymentStatus,
 } from './entities/payment.entity';
+import { BankLedgerService } from '../mock-bank/bank-ledger.service';
+import { SHOP_BANK_ACCOUNT } from '../mock-bank/mock-bank.constants';
 
 const UNIQUE_VIOLATION = '23505';
 
 export type PaymentDecision = 'CONFIRM' | 'REJECT';
 
 /**
- * Task 8 — thanh toán do nhân viên xác nhận (yêu cầu 30/10):
- * khách chọn phương thức → chuyển tiền → bấm "Tôi đã chuyển tiền" (chỉ báo) →
- * ADMIN xác nhận (đơn PAID) hoặc từ chối (đơn PAYMENT_FAILED).
+ * Task 8 — thanh toán giả lập, nhân viên xác nhận (yêu cầu 30/10):
+ * khách chọn phương thức → chuyển tiền trên ngân hàng giả lập (tiền vào sao kê,
+ * phiên TRANSFER_RECEIVED) → ADMIN đối chiếu rồi xác nhận (đơn PAID) hoặc từ
+ * chối (đơn PAYMENT_FAILED, hoàn số tiền đã nhận).
  * Every order status change goes through OrdersService.updateOrderStatus, so the
  * state machine (assertTransition) still guards every arrow.
  */
@@ -51,6 +54,7 @@ export class PaymentsService {
     private readonly userRepository: Repository<User>,
     private readonly ordersService: OrdersService,
     private readonly dataSource: DataSource,
+    private readonly ledger: BankLedgerService,
   ) {}
 
   private toView(payment: Payment, order?: Order | null) {
@@ -60,7 +64,7 @@ export class PaymentsService {
       amount: payment.amount,
       method: payment.method,
       status: payment.status,
-      reportedAt: payment.reportedAt ?? null,
+      receivedAt: payment.receivedAt ?? null,
       reviewNote: payment.reviewNote ?? null,
       cancellationPending: order?.cancelRequestStatus === 'PENDING',
       createdAt: payment.createdAt,
@@ -192,7 +196,7 @@ export class PaymentsService {
               amount: order.total,
               method: dto.method,
               status: 'PENDING',
-              reportedAt: null,
+              receivedAt: null,
               reviewedAt: null,
               reviewedBy: null,
               reviewNote: null,
@@ -236,29 +240,38 @@ export class PaymentsService {
     }
   }
 
-  /** Customer reports a transfer; only staff can make the order PAID. */
-  async reportPaid(userId: string, paymentId: string) {
+  /**
+   * Ngân hàng giả lập: khách bấm "Chuyển tiền". Records the money on the shop's
+   * statement and marks the payment TRANSFER_RECEIVED so staff are notified.
+   * The order stays PENDING: only staff can make it PAID. Public on purpose
+   * (opened by scanning the QR on a phone that is not logged in); the payment
+   * id is a random UUID and a transfer can only add money, never confirm.
+   */
+  async receiveTransfer(paymentId: string) {
     const result = await this.dataSource.transaction(async (manager) => {
       const { payment, order } = await this.lockPair(manager, paymentId);
-      if (payment.userId !== userId)
-        throw new ForbiddenException(
-          'Bạn không có quyền với phiên thanh toán này',
+      if (payment.method !== 'WALLET')
+        throw new BadRequestException(
+          'Thanh toán thẻ được thực hiện tại quầy, không chuyển khoản',
         );
+      // Pressing "Chuyển tiền" twice never takes the money twice
+      if (payment.status === 'TRANSFER_RECEIVED')
+        return this.toView(payment, order);
       if (
         (await this.ordersService.expireIfNeeded(order, manager)) ||
         order.status === 'CANCELLED'
       )
         return null;
-      if (
-        order.status !== 'PENDING' ||
-        !ACTIVE_PAYMENT_STATUSES.includes(payment.status)
-      )
-        throw new BadRequestException('Phiên thanh toán không còn chờ xử lý');
-      if (payment.status === 'CUSTOMER_REPORTED')
-        return this.toView(payment, order);
+      if (order.status !== 'PENDING' || payment.status !== 'PENDING')
+        throw new BadRequestException(
+          'Phiên thanh toán không còn chờ chuyển tiền',
+        );
       assertNoPendingCancellation(order);
-      payment.status = 'CUSTOMER_REPORTED';
-      payment.reportedAt = await this.ordersService.databaseNow(manager);
+      const now = await this.ordersService.databaseNow(manager);
+      // Amount comes from the payment (= order total), never from the client
+      await this.ledger.recordIncoming(payment, manager, payment.orderId, now);
+      payment.status = 'TRANSFER_RECEIVED';
+      payment.receivedAt = now;
       return this.toView(
         await manager.getRepository(Payment).save(payment),
         order,
@@ -266,6 +279,29 @@ export class PaymentsService {
     });
     if (!result) throw new BadRequestException('Đơn đã hết hạn hoặc bị hủy');
     return result;
+  }
+
+  /** GET /mock-bank/payments/:id — what the mock bank screen shows before transferring. */
+  async getTransferInfo(paymentId: string) {
+    const payment = await this.paymentRepository.findOneBy({ id: paymentId });
+    if (!payment)
+      throw new NotFoundException('Không tìm thấy phiên thanh toán');
+    const order = await this.orderRepository.findOneBy({
+      id: payment.orderId,
+    });
+    return {
+      paymentId: payment.id,
+      orderId: payment.orderId,
+      amount: payment.amount,
+      method: payment.method,
+      status: payment.status,
+      orderStatus: order?.status ?? null,
+      expiresAt: order?.expiresAt ?? null,
+      receivedAt: payment.receivedAt ?? null,
+      transferContent: payment.orderId,
+      account: SHOP_BANK_ACCOUNT,
+      serverTime: new Date(),
+    };
   }
 
   /** GET /payments/:id — màn hình khách tự hỏi lại trạng thái (polling). */
@@ -299,16 +335,33 @@ export class PaymentsService {
     if (query.orderId?.trim()) where.orderId = query.orderId.trim();
     // Filter before LIMIT: old unpaid sessions must not hide newer live orders.
     if (filter === 'ACTIVE') {
-      const activeOrders = await this.orderRepository.find({
-        where: {
-          status: 'PENDING',
-          expiresAt: MoreThan(new Date()),
-          ...(query.orderId?.trim() ? { id: query.orderId.trim() } : {}),
-        },
-        select: { id: true },
-      });
-      if (!activeOrders.length) return [];
-      where.orderId = In(activeOrders.map((order) => order.id));
+      const orderFilter = query.orderId?.trim()
+        ? { id: query.orderId.trim() }
+        : {};
+      const [activeOrders, received] = await Promise.all([
+        this.orderRepository.find({
+          where: {
+            status: 'PENDING',
+            expiresAt: MoreThan(new Date()),
+            ...orderFilter,
+          },
+          select: { id: true },
+        }),
+        // Money already arrived: never auto-expired, staff must still decide
+        this.paymentRepository.find({
+          where: {
+            status: 'TRANSFER_RECEIVED',
+            ...(query.orderId?.trim() ? { orderId: query.orderId.trim() } : {}),
+          },
+          select: { orderId: true },
+        }),
+      ]);
+      const ids = new Set([
+        ...activeOrders.map((order) => order.id),
+        ...received.map((payment) => payment.orderId),
+      ]);
+      if (!ids.size) return [];
+      where.orderId = In([...ids]);
     }
 
     const payments = await this.paymentRepository.find({
@@ -341,7 +394,9 @@ export class PaymentsService {
         if (filter !== 'ACTIVE') return true;
         const order = orderById.get(payment.orderId);
         return (
-          order?.status === 'PENDING' && order.expiresAt.getTime() > Date.now()
+          order?.status === 'PENDING' &&
+          (payment.status === 'TRANSFER_RECEIVED' ||
+            order.expiresAt.getTime() > Date.now())
         );
       })
       .map((payment) => {
@@ -355,12 +410,12 @@ export class PaymentsService {
         };
       });
 
-    // Customers who already reported a transfer come first
+    // Payments whose money already arrived come first
     if (filter === 'ACTIVE') {
       rows.sort(
         (a, b) =>
-          Number(b.status === 'CUSTOMER_REPORTED') -
-          Number(a.status === 'CUSTOMER_REPORTED'),
+          Number(b.status === 'TRANSFER_RECEIVED') -
+          Number(a.status === 'TRANSFER_RECEIVED'),
       );
     }
     return rows;
@@ -400,8 +455,31 @@ export class PaymentsService {
         manager,
       );
       if (updated.status === 'CANCELLED') return null;
+      const now = await this.ordersService.databaseNow(manager);
+      if (decision === 'CONFIRM') {
+        // Card at the counter (or money staff saw outside the mock bank): put it
+        // on the statement so a later cancellation refunds the right amount
+        if (!(await this.ledger.hasReceived(payment.id, manager)))
+          await this.ledger.recordIncoming(
+            payment,
+            manager,
+            payment.method === 'CARD'
+              ? `Quẹt thẻ tại quầy ${payment.orderId}`
+              : `Nhân viên xác nhận đã nhận ${payment.orderId}`,
+            now,
+          );
+      } else {
+        // Rejected after the money arrived: give it back, customer pays again
+        await this.ledger.refundOrder(
+          payment.orderId,
+          manager,
+          'nhân viên từ chối thanh toán',
+          now,
+          payment.id,
+        );
+      }
       payment.status = targetPayment;
-      payment.reviewedAt = await this.ordersService.databaseNow(manager);
+      payment.reviewedAt = now;
       payment.reviewedBy = adminId;
       payment.reviewNote = note?.trim() || null;
       return this.toView(

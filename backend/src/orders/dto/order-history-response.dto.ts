@@ -33,6 +33,8 @@ export interface OrderHistoryResponseDto
   cancelledAt: Date | null;
   cancelReason: CancellationReason | null;
   paymentMethod: PaymentMethod | null;
+  refundedAmount: number;
+  transferReceived: boolean;
   serverTime: Date;
   canPay: boolean;
   items: OrderHistoryItemDto[];

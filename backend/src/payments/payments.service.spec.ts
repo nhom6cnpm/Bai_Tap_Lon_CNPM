@@ -14,6 +14,18 @@ import { assertTransition, type OrderStatus } from '../orders/order-status';
 import { User } from '../auth/user.entity';
 import { Payment } from './entities/payment.entity';
 import { PaymentRequestKey } from './entities/payment-request-key.entity';
+import {
+  BankLedgerService,
+  type LedgerPayment,
+} from '../mock-bank/bank-ledger.service';
+
+interface LedgerRow {
+  type: 'IN' | 'REFUND';
+  amount: number;
+  orderId: string;
+  paymentId: string | null;
+  content: string;
+}
 
 type Row = Record<string, unknown>;
 
@@ -53,11 +65,60 @@ function memoryRepository<T extends { id: string }>(rows: () => T[]) {
   };
 }
 
-describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
+describe('PaymentsService (ngân hàng giả lập + nhân viên xác nhận)', () => {
   let service: PaymentsService;
   let payments: Payment[];
   let orders: Order[];
   let requestKeys: PaymentRequestKey[];
+  let ledgerRows: LedgerRow[];
+
+  // In-memory sao kê of the mock bank
+  const balance = (orderId: string) =>
+    ledgerRows
+      .filter((row) => row.orderId === orderId)
+      .reduce(
+        (sum, row) => sum + (row.type === 'IN' ? row.amount : -row.amount),
+        0,
+      );
+  const ledger = {
+    balanceForOrder: jest.fn(async (orderId: string) => balance(orderId)),
+    hasReceived: jest.fn(async (paymentId: string) =>
+      ledgerRows.some(
+        (row) => row.paymentId === paymentId && row.type === 'IN',
+      ),
+    ),
+    recordIncoming: jest.fn(
+      async (payment: LedgerPayment, _manager: unknown, content: string) => {
+        ledgerRows.push({
+          type: 'IN',
+          amount: payment.amount,
+          orderId: payment.orderId,
+          paymentId: payment.id,
+          content,
+        });
+      },
+    ),
+    refundOrder: jest.fn(
+      async (
+        orderId: string,
+        _manager: unknown,
+        reason: string,
+        _now: Date,
+        paymentId: string | null = null,
+      ) => {
+        const amount = balance(orderId);
+        if (amount <= 0) return 0;
+        ledgerRows.push({
+          type: 'REFUND',
+          amount,
+          orderId,
+          paymentId,
+          content: reason,
+        });
+        return amount;
+      },
+    ),
+  };
 
   const paymentRepository = memoryRepository<Payment>(() => payments);
   const orderRepository = memoryRepository<Order>(() => orders);
@@ -108,6 +169,7 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
     payments = [];
     orders = [orderWith('PENDING')];
     requestKeys = [];
+    ledgerRows = [];
     jest.clearAllMocks();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -135,6 +197,7 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
             databaseNow: async () => new Date(),
           },
         },
+        { provide: BankLedgerService, useValue: ledger },
         {
           provide: ConfigService,
           useValue: {
@@ -224,49 +287,77 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
     });
   });
 
-  describe('POST /payments/:id/report-paid (khách báo đã chuyển tiền)', () => {
-    it('chỉ đổi phiên sang CUSTOMER_REPORTED, đơn vẫn PENDING', async () => {
+  describe('Ngân hàng giả lập (receiveTransfer)', () => {
+    it('chuyển tiền: tiền vào sao kê đúng tổng đơn, phiên TRANSFER_RECEIVED, đơn vẫn PENDING', async () => {
       const { paymentId } = await create();
-      const res = await service.reportPaid('user-1', paymentId);
-      expect(res.status).toBe('CUSTOMER_REPORTED');
-      expect(res.reportedAt).toBeInstanceOf(Date);
+      const res = await service.receiveTransfer(paymentId);
+      expect(res.status).toBe('TRANSFER_RECEIVED');
+      expect(res.receivedAt).toBeInstanceOf(Date);
       expect(orders[0].status).toBe('PENDING');
       expect(updateOrderStatus).not.toHaveBeenCalled();
+      expect(ledgerRows).toEqual([
+        expect.objectContaining({
+          type: 'IN',
+          amount: 75000,
+          orderId: 'ORD-123',
+          paymentId,
+          content: 'ORD-123',
+        }),
+      ]);
     });
 
-    it('bấm 2 lần không lỗi', async () => {
+    it('bấm "Chuyển tiền" 2 lần chỉ ghi nhận tiền 1 lần', async () => {
       const { paymentId } = await create();
-      await service.reportPaid('user-1', paymentId);
-      const again = await service.reportPaid('user-1', paymentId);
-      expect(again.status).toBe('CUSTOMER_REPORTED');
+      await service.receiveTransfer(paymentId);
+      const again = await service.receiveTransfer(paymentId);
+      expect(again.status).toBe('TRANSFER_RECEIVED');
+      expect(ledgerRows).toHaveLength(1);
     });
 
-    it('khách không thể tự làm đơn thành PAID', async () => {
+    it('chuyển tiền không làm đơn thành PAID: chỉ nhân viên mới xác nhận', async () => {
       const { paymentId } = await create();
-      await service.reportPaid('user-1', paymentId);
-      expect(orders[0].status).not.toBe('PAID');
+      await service.receiveTransfer(paymentId);
+      expect(orders[0].status).toBe('PENDING');
+      expect(payments[0].status).not.toBe('SUCCESS');
     });
 
-    it('403 với phiên của người khác', async () => {
-      const { paymentId } = await create();
-      await expect(service.reportPaid('user-2', paymentId)).rejects.toThrow(
-        ForbiddenException,
+    it('thẻ thanh toán tại quầy, không chuyển khoản được', async () => {
+      const { paymentId } = await create('card', 'CARD');
+      await expect(service.receiveTransfer(paymentId)).rejects.toThrow(
+        BadRequestException,
       );
+      expect(ledgerRows).toHaveLength(0);
     });
 
-    it('không báo được khi đơn đã hết hạn/hủy', async () => {
+    it('không chuyển được khi đơn đã hết hạn/hủy', async () => {
       const { paymentId } = await create();
       orders[0].status = 'CANCELLED';
-      await expect(service.reportPaid('user-1', paymentId)).rejects.toThrow(
+      await expect(service.receiveTransfer(paymentId)).rejects.toThrow(
+        BadRequestException,
+      );
+      expect(ledgerRows).toHaveLength(0);
+    });
+
+    it('không chuyển được khi nhân viên đã xử lý phiên', async () => {
+      const { paymentId } = await create();
+      await service.review('admin-1', paymentId, 'REJECT');
+      await expect(service.receiveTransfer(paymentId)).rejects.toThrow(
         BadRequestException,
       );
     });
 
-    it('không báo được khi nhân viên đã xử lý', async () => {
+    it('màn hình ngân hàng: số tiền và nội dung lấy từ phiên thanh toán', async () => {
       const { paymentId } = await create();
-      await service.review('admin-1', paymentId, 'REJECT');
-      await expect(service.reportPaid('user-1', paymentId)).rejects.toThrow(
-        BadRequestException,
+      const info = await service.getTransferInfo(paymentId);
+      expect(info).toMatchObject({
+        amount: 75000,
+        transferContent: 'ORD-123',
+        status: 'PENDING',
+        orderStatus: 'PENDING',
+      });
+      expect(info.account.accountName).toBeTruthy();
+      await expect(service.getTransferInfo('PAY-404')).rejects.toThrow(
+        NotFoundException,
       );
     });
   });
@@ -274,7 +365,7 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
   describe('Admin xác nhận / từ chối (review)', () => {
     it('xác nhận: phiên SUCCESS, đơn PENDING → PAID, lưu người duyệt', async () => {
       const { paymentId } = await create();
-      await service.reportPaid('user-1', paymentId);
+      await service.receiveTransfer(paymentId);
       const res = await service.review('admin-1', paymentId, 'CONFIRM');
       expect(res.status).toBe('SUCCESS');
       expect(res.orderStatus).toBe('PAID');
@@ -294,7 +385,7 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
 
     it('từ chối: phiên FAILED, đơn PENDING → PAYMENT_FAILED, có lý do', async () => {
       const { paymentId } = await create();
-      await service.reportPaid('user-1', paymentId);
+      await service.receiveTransfer(paymentId);
       const res = await service.review(
         'admin-1',
         paymentId,
@@ -330,9 +421,9 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('luồng đầy đủ: từ chối → khách thử lại → báo lại → xác nhận', async () => {
+    it('luồng đầy đủ: từ chối (hoàn tiền) → khách thử lại → chuyển lại → xác nhận', async () => {
       const first = await create('k1');
-      await service.reportPaid('user-1', first.paymentId);
+      await service.receiveTransfer(first.paymentId);
       await service.review('admin-1', first.paymentId, 'REJECT');
       expect(orders[0].status).toBe('PAYMENT_FAILED');
 
@@ -340,14 +431,54 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
       expect(second.paymentId).not.toBe(first.paymentId);
       expect(orders[0].status).toBe('PENDING');
 
-      await service.reportPaid('user-1', second.paymentId);
+      await service.receiveTransfer(second.paymentId);
       await service.review('admin-1', second.paymentId, 'CONFIRM');
       expect(orders[0].status).toBe('PAID');
+      // 75k in, 75k refunded, 75k in again: the shop holds exactly one payment
+      expect(ledgerRows.map((row) => row.type)).toEqual(['IN', 'REFUND', 'IN']);
+      expect(balance('ORD-123')).toBe(75000);
+    });
+
+    it('xác nhận sau khi tiền đã về: không ghi tiền vào lần nữa', async () => {
+      const { paymentId } = await create();
+      await service.receiveTransfer(paymentId);
+      await service.review('admin-1', paymentId, 'CONFIRM');
+      expect(ledgerRows.filter((row) => row.type === 'IN')).toHaveLength(1);
+      expect(balance('ORD-123')).toBe(75000);
+    });
+
+    it('xác nhận thẻ tại quầy: ghi tiền vào sao kê để hủy sau này hoàn được', async () => {
+      const { paymentId } = await create('card', 'CARD');
+      await service.review('admin-1', paymentId, 'CONFIRM');
+      expect(ledgerRows).toEqual([
+        expect.objectContaining({
+          type: 'IN',
+          amount: 75000,
+          content: 'Quẹt thẻ tại quầy ORD-123',
+        }),
+      ]);
+    });
+
+    it('từ chối sau khi tiền đã về: hoàn đủ số tiền đã nhận', async () => {
+      const { paymentId } = await create();
+      await service.receiveTransfer(paymentId);
+      await service.review('admin-1', paymentId, 'REJECT', 'Sai thông tin');
+      expect(ledgerRows.at(-1)).toMatchObject({
+        type: 'REFUND',
+        amount: 75000,
+      });
+      expect(balance('ORD-123')).toBe(0);
+    });
+
+    it('từ chối khi chưa có tiền: không có gì để hoàn', async () => {
+      const { paymentId } = await create();
+      await service.review('admin-1', paymentId, 'REJECT');
+      expect(ledgerRows).toHaveLength(0);
     });
   });
 
   describe('GET /admin/payments (listForAdmin)', () => {
-    it('mặc định chỉ lấy phiên đang chờ, khách đã báo chuyển tiền lên đầu', async () => {
+    it('mặc định chỉ lấy phiên đang chờ, phiên đã có tiền về lên đầu', async () => {
       orders.push(orderWith('PENDING', 'user-1', 'ORD-2'));
       orders.push(orderWith('PENDING', 'user-1', 'ORD-3'));
       const a = await create('a');
@@ -361,7 +492,7 @@ describe('PaymentsService (nhân viên xác nhận thanh toán)', () => {
         { orderId: 'ORD-3', method: 'CARD' },
         'c',
       );
-      await service.reportPaid('user-1', b.paymentId);
+      await service.receiveTransfer(b.paymentId);
       await service.review('admin-1', c.paymentId, 'CONFIRM');
 
       const rows = await service.listForAdmin({});

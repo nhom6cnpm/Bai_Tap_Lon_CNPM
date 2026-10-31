@@ -156,15 +156,15 @@ function CancellationPanel({
                 </p>
                 {form === "IMMEDIATE" ? (
                   <p>
-                    Nếu bạn đã chuyển tiền, hãy báo chuyển tiền và gửi yêu cầu
-                    hủy để nhân viên kiểm tra. Hủy đơn không tự khôi phục hoặc
+                    Nếu bạn vừa chuyển tiền, hãy chờ màn hình báo “Đã nhận tiền”
+                    rồi gửi yêu cầu hủy để nhân viên hoàn tiền. Hủy đơn không
                     thay đổi giỏ hàng.
                   </p>
                 ) : (
                   <>
                     <p>
-                      Nhân viên sẽ xem xét trước khi hủy. Hệ thống không tự hoàn
-                      tiền.
+                      Nhân viên sẽ xem xét trước khi hủy. Nếu đồng ý, số tiền
+                      bạn đã trả được hoàn lại tự động.
                     </p>
                     <label className="block">
                       Lý do hủy

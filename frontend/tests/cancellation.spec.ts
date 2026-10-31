@@ -76,10 +76,9 @@ async function order(
     paymentId = (await opened.json()).paymentId;
     if (reported)
       expect(
+        // Ngân hàng giả lập: money arrives, staff must decide
         (
-          await request.post(`${api}/payments/${paymentId}/report-paid`, {
-            headers,
-          })
+          await request.post(`${api}/mock-bank/payments/${paymentId}/transfer`)
         ).ok(),
       ).toBe(true);
   }
@@ -120,7 +119,7 @@ test("cancels an unpaid checkout, returns voucher use and keeps the current cart
   await page.goto(`/checkout/${created.id}`);
   await page.getByRole("button", { name: "Hủy đơn hàng", exact: true }).click();
   await expect(
-    page.getByText("Nếu bạn đã chuyển tiền,", { exact: false }),
+    page.getByText("Nếu bạn vừa chuyển tiền,", { exact: false }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Xác nhận hủy", exact: true }).click();
   await expect(
@@ -162,7 +161,7 @@ test("cancels an unreported QR payment and shows a closed order instead of a rej
     page.getByRole("heading", { name: "Thanh toán thất bại" }),
   ).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "Tôi đã chuyển tiền" }),
+    page.getByRole("link", { name: "Mở ngân hàng giả lập" }),
   ).toHaveCount(0);
   await fits(page, "cancel-qr.png");
 });
@@ -282,12 +281,13 @@ test("approved PAID cancellation reverses points while keeping price and success
       .filter({
         has: board.getByRole("heading", { name: created.id, exact: true }),
       });
+    // Ngân hàng giả lập: approving refunds automatically, no money note needed
     await expect(
-      card.getByText("Hệ thống không tự hoàn tiền.", { exact: false }),
+      card.getByText("hệ thống tự hoàn", { exact: false }),
     ).toBeVisible();
     await expect(
       card.getByRole("button", { name: "Đồng ý hủy", exact: true }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     await card
       .getByLabel("Ghi chú xử lý / lý do từ chối")
       .fill("Đã trao đổi cách xử lý tiền tại quầy");
@@ -299,6 +299,9 @@ test("approved PAID cancellation reverses points while keeping price and success
     );
     await expect(page.getByLabel("Số dư điểm thưởng")).toContainText("0 điểm");
     await expect(page.getByText("25.000đ", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("Đã hoàn 25.000đ về tài khoản", { exact: false }),
+    ).toBeVisible();
     const payment = await request.get(`${api}/payments/${created.paymentId}`, {
       headers: { Authorization: `Bearer ${auth.access_token}` },
     });

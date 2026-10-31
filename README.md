@@ -109,18 +109,36 @@ Kiểm tra:
 NEXT_PUBLIC_APP_URL=http://<IP-máy-tính>:3000
 ```
 
-Trên Windows, chạy `ipconfig` để xem IPv4 Wi-Fi. Sau khi thay đổi địa chỉ,
-chạy `docker compose up -d --build frontend`. Nếu mở cả ứng dụng trên điện thoại,
-cần cấu hình thêm `NEXT_PUBLIC_API_URL=http://<IP-máy-tính>:3001` và
+Trên Windows, chạy `ipconfig` để xem IPv4 Wi-Fi; trên macOS chạy
+`ipconfig getifaddr en0`. Sau khi thay đổi địa chỉ, chạy
+`docker compose up -d --build frontend`. Trang ngân hàng giả lập gọi backend qua
+proxy của frontend (`/api/mock-bank/...`), nên điện thoại chỉ cần mở được cổng 3000.
+Nếu mở cả ứng dụng đặt món trên điện thoại, cần thêm
+`NEXT_PUBLIC_API_URL=http://<IP-máy-tính>:3001` và
 `FRONTEND_URL=http://<IP-máy-tính>:3000`. File `.env` được Git bỏ qua.
 
-QR hiện chứa liên kết `/admin/payments?orderId=...` để **nhân viên** tra cứu đơn;
-phải đăng nhập ADMIN để duyệt. Khách bấm **Tôi đã chuyển tiền** chỉ báo cho nhân viên,
-đơn vẫn PENDING. Nhân viên xác nhận mới chuyển PAID; từ chối chuyển PAYMENT_FAILED.
-Đây là luồng mô phỏng xác nhận tại cửa hàng, chưa tích hợp ngân hàng/VNPay.
+### Thanh toán giả lập (ngân hàng giả lập + nhân viên xác nhận)
+
+1. Khách đặt đơn (PENDING), chọn **Chuyển khoản / Ví** hoặc **Thẻ tại quầy**.
+2. **Ví:** màn hình hiện QR. Quét bằng điện thoại (hoặc bấm **Mở ngân hàng giả lập**)
+   để mở trang `/mock-bank/<paymentId>`: số tiền bằng đúng tổng đơn (không sửa được),
+   nội dung là mã đơn. Bấm **Chuyển tiền** thì sao kê của quán ghi "tiền vào" và
+   phiên thanh toán chuyển `TRANSFER_RECEIVED`. **Đơn vẫn PENDING.**
+3. Trang nhân viên `/admin/payments` tự làm mới 4 giây/lần, báo "Tiền đã về" (thông
+   báo, âm báo, số trên tab). Nhân viên đối chiếu rồi bấm **Xác nhận** (đơn PAID) hoặc
+   **Từ chối** (đơn PAYMENT_FAILED, tiền đã nhận được hoàn lại, khách thử lại được).
+4. **Thẻ:** khách đưa QR/mã đơn cho nhân viên, quẹt thẻ ngoài đời; nhân viên xác nhận
+   thì khoản tiền cũng được ghi vào sao kê.
+
+**Hoàn tiền:** mọi lần hủy đơn đang có tiền (duyệt hủy đơn PAID, duyệt yêu cầu hủy sau
+khi tiền đã về) và mọi lần từ chối sau khi tiền đã về đều tự ghi một dòng "Hoàn tiền"
+vào sao kê, đúng số quán đang giữ, chỉ một lần. Tab **Sao kê** trên `/admin/payments`
+(API `GET /admin/bank-transactions`) hiển thị tiền vào, đã hoàn và còn giữ. Ngân hàng
+giả lập không có tài khoản hay số dư của khách, và không bao giờ tự đổi đơn sang PAID.
 
 Task 10c giữ nguyên liệu khi tạo đơn PENDING, mặc định **15 phút từ lúc tạo đơn**
-theo cập nhật Task 8 ngày 30/10. Thời hạn được lưu trong `orders.expiresAt`;
+theo cập nhật Task 8 ngày 30/10. Đơn **đã có tiền về** thì không tự hủy khi hết hạn:
+nhân viên vẫn xác nhận được, hoặc từ chối và hoàn tiền. Thời hạn được lưu trong `orders.expiresAt`;
 checkout/QR dùng đồng hồ backend, thử lại không gia hạn và PAID không trừ thêm.
 `ORDER_PAYMENT_TIMEOUT_MINUTES` trong `.env` gốc (Docker) hoặc `backend/.env`
 (chạy local) chỉ áp dụng cho đơn mới. Đơn cũ giữ nguyên hạn.

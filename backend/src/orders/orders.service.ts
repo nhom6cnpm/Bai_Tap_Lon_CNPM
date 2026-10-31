@@ -29,6 +29,7 @@ import {
 import { Payment } from '../payments/entities/payment.entity';
 import { OrderBenefitsService } from './order-benefits.service';
 import { BENEFITS_POLICY_VERSIONS } from './benefits-policy';
+import { BankLedgerService } from '../mock-bank/bank-ledger.service';
 import {
   PREPARATION_TARGETS,
   type PreparationTarget,
@@ -44,6 +45,7 @@ export class OrdersService {
     private readonly vouchersService: VouchersService,
     private readonly configService: ConfigService,
     private readonly benefits: OrderBenefitsService,
+    private readonly ledger: BankLedgerService,
   ) {}
 
   async databaseNow(manager: EntityManager): Promise<Date> {
@@ -161,11 +163,23 @@ export class OrdersService {
     await manager.save(Order, order);
   }
 
-  /** Caller must commit a timeout result before returning an HTTP error. */
+  /** The mock bank already received money for this order; staff must decide. */
+  hasReceivedTransfer(orderId: string, manager: EntityManager) {
+    return manager
+      .getRepository(Payment)
+      .existsBy({ orderId, status: 'TRANSFER_RECEIVED' });
+  }
+
+  /**
+   * Caller must commit a timeout result before returning an HTTP error.
+   * An order whose money already arrived is never auto-cancelled: the customer
+   * paid in time, so staff confirm it (or reject it and the money is refunded).
+   */
   async expireIfNeeded(order: Order, manager: EntityManager): Promise<boolean> {
     if (!['PENDING', 'PAYMENT_FAILED'].includes(order.status)) return false;
     const now = await this.databaseNow(manager);
     if (order.expiresAt.getTime() > now.getTime()) return false;
+    if (await this.hasReceivedTransfer(order.id, manager)) return false;
     await this.cancelLocked(order, manager, 'PAYMENT_TIMEOUT', now);
     return true;
   }
@@ -178,8 +192,16 @@ export class OrdersService {
   ): Promise<Order> {
     if (order.status === 'CANCELLED') return order;
     assertTransition(order.status, 'CANCELLED');
+    // Ngân hàng giả lập: give back whatever the shop holds for this order
+    // (PAID orders, or money received before staff decided). Order lock held.
+    await this.ledger.refundOrder(
+      order.id,
+      manager,
+      reason === 'PAYMENT_TIMEOUT' ? 'đơn hết hạn' : 'hủy đơn',
+      now,
+    );
     await manager.getRepository(Payment).update(
-      { orderId: order.id, status: In(['PENDING', 'CUSTOMER_REPORTED']) },
+      { orderId: order.id, status: In(['PENDING', 'TRANSFER_RECEIVED']) },
       {
         status: 'FAILED',
         reviewedAt: now,
@@ -230,10 +252,7 @@ export class OrdersService {
       if (locked.status === 'CANCELLED') return locked;
       if (await this.expireIfNeeded(locked, manager)) return locked;
       assertTransition(locked.status, 'CANCELLED');
-      const reported = await manager.getRepository(Payment).existsBy({
-        orderId: locked.id,
-        status: 'CUSTOMER_REPORTED',
-      });
+      const reported = await this.hasReceivedTransfer(locked.id, manager);
       const action = cancellationAction(
         locked.status,
         reported,
@@ -335,9 +354,7 @@ export class OrdersService {
         throw new NotFoundException('Không tìm thấy đơn hàng');
       if (await this.expireIfNeeded(order, manager)) return true;
       if (order.cancelRequestStatus === 'PENDING') return false;
-      const reported = await manager
-        .getRepository(Payment)
-        .existsBy({ orderId, status: 'CUSTOMER_REPORTED' });
+      const reported = await this.hasReceivedTransfer(orderId, manager);
       if (
         cancellationAction(
           order.status,
@@ -385,10 +402,6 @@ export class OrdersService {
         throw new ConflictException('Đơn không còn được phép hủy.');
       if (decision === 'REJECTED' && !note?.trim())
         throw new BadRequestException('Cần nhập lý do từ chối.');
-      if (decision === 'APPROVED' && order.status === 'PAID' && !note?.trim())
-        throw new BadRequestException(
-          'Cần ghi chú xử lý tiền của đơn đã thanh toán. Hệ thống không tự hoàn tiền.',
-        );
       order.cancelRequestStatus = decision;
       order.cancelReviewedAt = await this.databaseNow(manager);
       order.cancelReviewedBy = adminId;
@@ -415,6 +428,10 @@ export class OrdersService {
         statuses: ['PENDING', 'PAYMENT_FAILED'],
       })
       .andWhere('order.expiresAt <= clock_timestamp()')
+      // Paid in time through the mock bank: wait for staff, never auto-cancel
+      .andWhere(
+        `NOT EXISTS (SELECT 1 FROM payments p WHERE p."orderId" = "order"."id" AND p.status = 'TRANSFER_RECEIVED')`,
+      )
       .orderBy('order.expiresAt', 'ASC')
       .addOrderBy('order.id', 'ASC')
       .take(limit)

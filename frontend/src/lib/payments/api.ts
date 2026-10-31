@@ -1,9 +1,9 @@
 import { getStoredToken } from "@/lib/auth";
 
 export type PaymentMethod = "WALLET" | "CARD";
-// CUSTOMER_REPORTED = khách đã bấm "Tôi đã chuyển tiền", chờ nhân viên xác nhận
+// TRANSFER_RECEIVED = ngân hàng giả lập đã nhận tiền, chờ nhân viên xác nhận
 export type PaymentStatus =
-  "PENDING" | "CUSTOMER_REPORTED" | "SUCCESS" | "FAILED";
+  "PENDING" | "TRANSFER_RECEIVED" | "SUCCESS" | "FAILED";
 export type OrderStatus =
   | "PENDING"
   | "PAID"
@@ -20,7 +20,7 @@ export interface PaymentDetails {
   amount: number;
   method: PaymentMethod;
   orderStatus: OrderStatus | null;
-  reportedAt: string | null;
+  receivedAt: string | null;
   reviewNote: string | null;
   createdAt: string | null;
   expiresAt: string | null;
@@ -77,13 +77,13 @@ export function requireToken(): string {
   return token;
 }
 
-const PAYMENT_STATUSES: readonly PaymentStatus[] = [
+export const PAYMENT_STATUSES: readonly PaymentStatus[] = [
   "PENDING",
-  "CUSTOMER_REPORTED",
+  "TRANSFER_RECEIVED",
   "SUCCESS",
   "FAILED",
 ];
-const ORDER_STATUSES: readonly OrderStatus[] = [
+export const ORDER_STATUSES: readonly OrderStatus[] = [
   "PENDING",
   "PAID",
   "PAYMENT_FAILED",
@@ -121,7 +121,7 @@ export function parsePayment(data: unknown): PaymentDetails {
     orderStatus: ORDER_STATUSES.includes(data.orderStatus as OrderStatus)
       ? (data.orderStatus as OrderStatus)
       : null,
-    reportedAt: optionalString(data.reportedAt),
+    receivedAt: optionalString(data.receivedAt),
     reviewNote: optionalString(data.reviewNote),
     createdAt: optionalString(data.createdAt),
     expiresAt: optionalString(data.expiresAt),
@@ -170,19 +170,5 @@ export async function getPayment(paymentId: string): Promise<PaymentDetails> {
   );
   return parsePayment(
     await readResponse(response, "Không kiểm tra được trạng thái thanh toán."),
-  );
-}
-
-/** "Tôi đã chuyển tiền": only notifies staff, the order is not paid yet. */
-export async function reportPaid(paymentId: string): Promise<PaymentDetails> {
-  const response = await fetch(
-    `${API_URL}/payments/${encodeURIComponent(paymentId)}/report-paid`,
-    {
-      method: "POST",
-      headers: authHeaders(),
-    },
-  );
-  return parsePayment(
-    await readResponse(response, "Không gửi được thông báo. Vui lòng thử lại."),
   );
 }

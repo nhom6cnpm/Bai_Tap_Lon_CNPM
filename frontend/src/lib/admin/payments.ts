@@ -75,3 +75,51 @@ export async function reviewPayment(
     ),
   );
 }
+
+/** One line of the shop's statement in the mock bank. */
+export interface BankTransaction {
+  id: string;
+  type: "IN" | "REFUND";
+  amount: number;
+  orderId: string;
+  paymentId: string | null;
+  content: string;
+  createdAt: string;
+}
+
+export async function listBankTransactions(
+  orderId?: string,
+): Promise<BankTransaction[]> {
+  const params = new URLSearchParams();
+  if (orderId?.trim()) params.set("orderId", orderId.trim());
+  const response = await fetch(
+    `${API_URL}/admin/bank-transactions${params.size ? `?${params.toString()}` : ""}`,
+    { headers: headers(), cache: "no-store" },
+  );
+  const data = await readResponse(response, "Không tải được sao kê.");
+  if (!Array.isArray(data))
+    throw new Error("Phản hồi sao kê không đúng định dạng.");
+  return data.flatMap((row: unknown) => {
+    if (
+      !isRecord(row) ||
+      typeof row.id !== "string" ||
+      (row.type !== "IN" && row.type !== "REFUND") ||
+      typeof row.amount !== "number" ||
+      typeof row.orderId !== "string" ||
+      typeof row.content !== "string" ||
+      typeof row.createdAt !== "string"
+    )
+      return [];
+    return [
+      {
+        id: row.id,
+        type: row.type,
+        amount: row.amount,
+        orderId: row.orderId,
+        paymentId: typeof row.paymentId === "string" ? row.paymentId : null,
+        content: row.content,
+        createdAt: row.createdAt,
+      },
+    ];
+  });
+}

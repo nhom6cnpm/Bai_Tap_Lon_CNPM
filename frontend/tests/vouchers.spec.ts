@@ -1,4 +1,4 @@
-import { reviewAsStaff } from "./staff";
+import { payWithMockBank, reviewAsStaff } from "./staff";
 import {
   expect,
   test,
@@ -119,14 +119,9 @@ test("select a public voucher and pay the discounted amount through the QR on a 
   await page.getByRole("button", { name: /^Thanh toán/ }).click();
   await expect(page).toHaveURL(/\/pay\/PAY-/);
   await expect(
-    page.getByRole("img", { name: `Mã QR đơn hàng ${id}` }),
+    page.getByRole("img", { name: `Mã QR chuyển khoản đơn ${id}` }),
   ).toBeVisible();
-  await page
-    .getByRole("button", { name: "Tôi đã chuyển tiền", exact: true })
-    .click();
-  await expect(
-    page.getByText("Đang chờ nhân viên xác nhận…", { exact: true }),
-  ).toBeVisible();
+  await payWithMockBank(page);
   await reviewAsStaff(browser, request, id);
   await expect(page).toHaveURL(new RegExp(`/orders/${id}/confirmation$`));
   await expect(page.getByLabel("Số dư điểm thưởng")).toContainText("2 điểm");

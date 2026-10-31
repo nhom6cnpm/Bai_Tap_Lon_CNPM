@@ -17,7 +17,7 @@ async function start() {
     throw new Error('Refusing to reset a non-test database');
   }
   await database.query(
-    'TRUNCATE vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
+    'TRUNCATE bank_transactions, vouchers, order_ingredient_reservations, order_items, payments, orders, users CASCADE',
   );
   await database.query('UPDATE ingredients SET quantity = 10000, version = 1');
   // These codes exist only in the guarded _ui_test database, never in app migrations.
