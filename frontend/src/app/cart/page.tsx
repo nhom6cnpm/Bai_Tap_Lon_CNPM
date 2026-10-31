@@ -9,6 +9,7 @@ import { formatPrice } from "@/lib/formatPrice";
 import { toppingOptions } from "@/lib/productOptions";
 import { getStoredToken } from "@/lib/auth";
 import { submitOrderApi } from "@/lib/orders/orders";
+import { useClearPaidCart } from "@/hooks/useClearPaidCart";
 import {
   clearActiveCheckout,
   getActiveCheckout,
@@ -46,6 +47,13 @@ export default function CartPage() {
       ? getActiveCheckout(getCartFingerprint(items))
       : null;
   const activeOrder = useOwnOrder(candidate?.orderId ?? "");
+  // The order of this cart was paid (staff confirmed while the customer was
+  // elsewhere): empty the cart as soon as it is opened
+  useClearPaidCart(
+    candidate && activeOrder.data && !activeOrder.isError
+      ? [activeOrder.data]
+      : undefined,
+  );
   const now = useOrderClock(
     activeOrder.data?.serverTime,
     activeOrder.dataUpdatedAt,

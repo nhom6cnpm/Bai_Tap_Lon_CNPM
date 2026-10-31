@@ -510,6 +510,25 @@ test("paying an earlier order preserves a newer different cart", async ({
   );
 });
 
+test("cart is emptied after staff confirm even when the customer left the payment page", async ({
+  page,
+  context,
+  request,
+  browser,
+}) => {
+  await authenticate(context, await account(request));
+  const id = await createFromCart(page);
+  await page.getByRole("button", { name: /^Thanh toán/ }).click();
+  await expect(page).toHaveURL(/\/pay\/PAY-/);
+  await payWithMockBank(page);
+  // The customer walks away before staff confirm the payment
+  await page.goto("/menu");
+  await reviewAsStaff(browser, request, id);
+  await page.goto("/cart");
+  await expect(page.getByText("Giỏ hàng trống", { exact: true })).toBeVisible();
+  await waitForCartItems(page, 0);
+});
+
 test("reported payment resumes safely with a skewed browser clock; customer has no admin access and logout hides payment", async ({
   page,
   context,
