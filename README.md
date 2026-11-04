@@ -9,23 +9,6 @@ idempotent, giữ nguyên liệu khi đặt đồng thời, voucher và điểm 
 
 Repository: https://github.com/nhom6cnpm/Bai_Tap_Lon_CNPM
 
-## Tài liệu
-| Nội dung | Tài liệu |
-|---|---|
-| Bàn giao & luồng demo Task 9/10 | [docs/task-9-10-handoff.md](docs/task-9-10-handoff.md) |
-| Quyết định nghiệp vụ đã chốt | [docs/task-9-10-team-decisions.md](docs/task-9-10-team-decisions.md) |
-| Thanh toán do nhân viên xác nhận | [docs/staff-payment-integration.md](docs/staff-payment-integration.md) |
-| Tồn kho theo nguyên liệu, giữ/hoàn nguyên liệu (10c) | [docs/task-10c-inventory.md](docs/task-10c-inventory.md) |
-| Số ly còn bán theo size/topping | [docs/selection-availability.md](docs/selection-availability.md) |
-| Thanh toán idempotent (10d) | [docs/task-10d-payments.md](docs/task-10d-payments.md) |
-| Voucher & điểm thưởng (10e) | [docs/task-10e-vouchers.md](docs/task-10e-vouchers.md), [docs/task-10-voucher-points.md](docs/task-10-voucher-points.md) |
-| Hủy đơn & nhân viên duyệt | [docs/task-9-cancellation-review.md](docs/task-9-cancellation-review.md) |
-| Bảng pha chế | [docs/task-9-preparation-board.md](docs/task-9-preparation-board.md) |
-| Bộ sưu tập API (Postman) | [BrewLite.postman_collection.json](BrewLite.postman_collection.json) |
-
-Một số tài liệu Task 10c/d ghi luồng cũ (hạn 5 phút, cổng giả lập/callback); luồng hiện
-tại là ngân hàng giả lập + nhân viên xác nhận, hạn 15 phút, như mô tả trong README này.
-
 ## Công nghệ
 
 | Thành phần | Công nghệ |
@@ -40,7 +23,6 @@ tại là ngân hàng giả lập + nhân viên xác nhận, hạn 15 phút, nh�
 Bai_Tap_Lon_CNPM/
 ├── backend/            # NestJS API (port 3001)
 ├── frontend/           # Next.js app (port 3000)
-├── docs/               # Tài liệu nghiệp vụ, bàn giao, kiểm thử
 ├── docker-compose.yml  # Docker Compose full-stack (postgres, backend, frontend)
 └── README.md
 ```
